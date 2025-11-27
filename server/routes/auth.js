@@ -90,8 +90,57 @@ router.get('/google/callback', (req, res, next) => {
   }
   passport.authenticate('google', { failureRedirect: `${process.env.CLIENT_URL}/login` })(req, res, next)
 }, (req, res) => {
-  // Successful authentication, redirect to frontend
-  res.redirect(`${process.env.CLIENT_URL}?auth=success`)
+  // Successful authentication
+  // For mobile, send a simple HTML page that closes the browser
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Login Successful</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          margin: 0;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+        }
+        .container {
+          text-align: center;
+          padding: 2rem;
+        }
+        h1 { font-size: 2rem; margin-bottom: 1rem; }
+        p { font-size: 1.1rem; opacity: 0.9; }
+        .checkmark {
+          font-size: 4rem;
+          margin-bottom: 1rem;
+          animation: scaleIn 0.3s ease-out;
+        }
+        @keyframes scaleIn {
+          from { transform: scale(0); }
+          to { transform: scale(1); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="checkmark">✓</div>
+        <h1>Login Successful!</h1>
+        <p>You can close this window and return to the app.</p>
+      </div>
+      <script>
+        // Auto-close after 2 seconds for mobile
+        setTimeout(() => {
+          window.close();
+        }, 2000);
+      </script>
+    </body>
+    </html>
+  `)
 })
 
 // Logout

@@ -7,6 +7,7 @@ import {
   FlatList,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
@@ -223,13 +224,17 @@ const styles = StyleSheet.create({
   },
   headerButtons: {
     flexDirection: 'row',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   headerButton: {
     backgroundColor: '#2c3e50',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 6,
+    flex: 1,
+    minWidth: 120,
+    alignItems: 'center',
   },
   headerButtonText: {
     color: '#fff',

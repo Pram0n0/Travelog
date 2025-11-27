@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { authAPI } from '../api/index.js';
+import { API_URL } from '../api/index.js';
+
+WebBrowser.maybeCompleteAuthSession();
 
 function Auth({ onLogin }) {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -45,6 +50,41 @@ function Auth({ onLogin }) {
       }
     } catch (err) {
       setError(err.message || 'Authentication failed');
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      // Get base URL from API_URL (remove /api)
+      const baseUrl = API_URL.replace('/api', '');
+      const googleAuthUrl = `${baseUrl}/api/auth/google`;
+
+      // Open Google OAuth in browser
+      const result = await WebBrowser.openAuthSessionAsync(
+        googleAuthUrl,
+        `${baseUrl}/api/auth/google/callback`
+      );
+
+      if (result.type === 'success') {
+        // After successful OAuth, check if we're logged in
+        const response = await authAPI.checkAuth();
+        if (response.user) {
+          onLogin(response.user);
+        } else {
+          setError('Google login failed. Please try again.');
+          setLoading(false);
+        }
+      } else {
+        setError('Google login was cancelled');
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error('Google login error:', err);
+      setError(err.message || 'Google login failed');
       setLoading(false);
     }
   };
@@ -121,6 +161,26 @@ function Auth({ onLogin }) {
                 {loading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
               </Text>
             </TouchableOpacity>
+
+            {!isSignUp && (
+              <>
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.googleButton, loading && styles.buttonDisabled]}
+                  onPress={handleGoogleLogin}
+                  disabled={loading}
+                >
+                  <Text style={styles.googleButtonText}>
+                    {loading ? 'Connecting...' : '🔐 Continue with Google'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -213,6 +273,35 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e5e7eb',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: '#7f8c8d',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  googleButton: {
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  googleButtonText: {
+    color: '#2c3e50',
     fontSize: 16,
     fontWeight: 'bold',
   },

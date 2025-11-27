@@ -23,8 +23,28 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
 // CORS Configuration
+const allowedOrigins = [
+  process.env.CLIENT_URL || 'http://localhost:5173',
+  'http://localhost:8081',
+  'http://localhost:8083',
+  'exp://localhost:8081',
+  'exp://192.168.1.9:8081'  // For Expo mobile
+];
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow Expo origins (they start with exp://)
+    if (origin.startsWith('exp://')) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // For now, allow all origins for development
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']

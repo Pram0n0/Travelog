@@ -1,7 +1,7 @@
 // For React Native - replace with your backend URL
 // Use your computer's IP address when testing on a physical device
 // or 10.0.2.2 for Android emulator or localhost for iOS simulator
-const API_URL = 'http://localhost:5000/api'; // Change this to your backend URL
+export const API_URL = 'http://192.168.1.9:5000/api'; // Physical device - use computer's IP
 
 // Helper function for API calls
 const apiCall = async (endpoint, options = {}) => {
@@ -10,6 +10,7 @@ const apiCall = async (endpoint, options = {}) => {
       'Content-Type': 'application/json',
       ...options.headers,
     },
+    credentials: 'include', // Include cookies for session-based auth
     ...options,
   };
 
@@ -43,6 +44,10 @@ export const authAPI = {
     return apiCall('/auth/logout', {
       method: 'POST',
     })
+  },
+
+  checkAuth: async () => {
+    return apiCall('/auth/status')
   },
 
   checkStatus: async () => {

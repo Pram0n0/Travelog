@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 
 function BalanceCalculator({ group, currentUser, mode }) {
   const calculateBalances = () => {
@@ -35,7 +35,7 @@ function BalanceCalculator({ group, currentUser, mode }) {
 
   if (mode === 'settle') {
     return (
-      <ScrollView>
+      <View>
         <Text style={styles.title}>Settlement Suggestions</Text>
         {Object.entries(balances).map(([currency, memberBalances]) => (
           <View key={currency} style={styles.currencySection}>
@@ -52,13 +52,13 @@ function BalanceCalculator({ group, currentUser, mode }) {
               ))}
           </View>
         ))}
-      </ScrollView>
+      </View>
     );
   }
 
   // mode === 'totals'
   return (
-    <ScrollView>
+    <View>
       <Text style={styles.title}>Balance Totals</Text>
       {Object.entries(balances).map(([currency, memberBalances]) => (
         <View key={currency} style={styles.currencySection}>
@@ -73,7 +73,7 @@ function BalanceCalculator({ group, currentUser, mode }) {
           ))}
         </View>
       ))}
-    </ScrollView>
+    </View>
   );
 }
 

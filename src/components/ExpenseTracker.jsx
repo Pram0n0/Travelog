@@ -6,9 +6,9 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
+  Modal,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import * as Sharing from 'expo-sharing';
 import ExpenseForm from './ExpenseForm';
 import BalanceCalculator from './BalanceCalculator';
 
@@ -18,6 +18,10 @@ function ExpenseTracker({ group, currentUser, navigation, onAddExpense, onDelete
   const [editingExpense, setEditingExpense] = useState(null);
   const [showTotals, setShowTotals] = useState(false);
   const [showSettleUp, setShowSettleUp] = useState(false);
+  const [expenseFilterCurrency, setExpenseFilterCurrency] = useState('all');
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
+  const [targetCurrency, setTargetCurrency] = useState('USD');
+  const [isConverting, setIsConverting] = useState(false);
 
   const userHasOutstandingBalances = useMemo(() => {
     const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))];
@@ -83,6 +87,12 @@ function ExpenseTracker({ group, currentUser, navigation, onAddExpense, onDelete
     setShowForm(false);
   };
 
+  const handleEditExpense = (expense) => {
+    onEditExpense(editingExpense.id, expense);
+    setEditingExpense(null);
+    setExpandedExpense(null);
+  };
+
   const handleDeleteExpense = (expenseId) => {
     Alert.alert(
       'Delete Expense',
@@ -100,6 +110,159 @@ function ExpenseTracker({ group, currentUser, navigation, onAddExpense, onDelete
       ]
     );
   };
+
+  const calculateTotals = useMemo(() => {
+    const totalsPerCurrency = {};
+    
+    if (!group.expenses || group.expenses.length === 0 || !group.members) {
+      return { 'USD': { totalSpend: 0, memberShares: {} } };
+    }
+    
+    group.expenses.forEach(expense => {
+      const currency = expense.currency || 'USD';
+      if (!totalsPerCurrency[currency]) {
+        totalsPerCurrency[currency] = {
+          totalSpend: 0,
+          memberShares: {}
+        };
+        if (Array.isArray(group.members)) {
+          group.members.forEach(member => {
+            totalsPerCurrency[currency].memberShares[member] = 0;
+          });
+        }
+      }
+      
+      totalsPerCurrency[currency].totalSpend += expense.amount;
+      
+      if (expense.splitAmounts) {
+        Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
+          if (!totalsPerCurrency[currency].memberShares[member]) {
+            totalsPerCurrency[currency].memberShares[member] = 0;
+          }
+          totalsPerCurrency[currency].memberShares[member] += amount;
+        });
+      } else if (expense.splitBetween) {
+        const sharePerPerson = expense.amount / expense.splitBetween.length;
+        expense.splitBetween.forEach(member => {
+          if (!totalsPerCurrency[currency].memberShares[member]) {
+            totalsPerCurrency[currency].memberShares[member] = 0;
+          }
+          totalsPerCurrency[currency].memberShares[member] += sharePerPerson;
+        });
+      }
+    });
+
+    return totalsPerCurrency;
+  }, [group.expenses, group.members]);
+
+  const exportToCSV = () => {
+    let csv = 'Date,Description,Amount,Currency,Paid By,Split Type,Split Details\n';
+    
+    group.expenses.forEach(expense => {
+      const date = new Date(expense.date).toLocaleDateString();
+      const description = `"${expense.description}"`;
+      const amount = expense.amount.toFixed(2);
+      const currency = expense.currency || 'USD';
+      
+      let paidBy = '';
+      if (expense.isMultiplePayers) {
+        paidBy = `"${expense.paidBy.map(p => `${p.member}: ${currency} ${p.amount.toFixed(2)}`).join('; ')}"`;
+      } else {
+        paidBy = expense.paidBy;
+      }
+      
+      const splitType = expense.splitType || 'equally';
+      
+      let splitDetails = '';
+      if (expense.splitAmounts) {
+        splitDetails = `"${Object.entries(expense.splitAmounts).map(([member, amt]) => `${member}: ${currency} ${amt.toFixed(2)}`).join('; ')}"`;
+      } else {
+        splitDetails = `"${expense.splitBetween?.join(', ') || 'All members'}"`;
+      }
+      
+      csv += `${date},${description},${amount},${currency},${paidBy},${splitType},${splitDetails}\n`;
+    });
+    
+    // Copy CSV to clipboard for mobile
+    Clipboard.setStringAsync(csv);
+    Alert.alert('CSV Exported', 'Expense data copied to clipboard. You can paste it into a spreadsheet app.');
+  };
+
+  const convertAllExpenses = async () => {
+    setIsConverting(true);
+    try {
+      const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))];
+      
+      if (currencies.length === 1 && currencies[0] === targetCurrency) {
+        Alert.alert('No Conversion Needed', 'All expenses are already in ' + targetCurrency);
+        setShowConvertDialog(false);
+        setIsConverting(false);
+        return;
+      }
+
+      const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${targetCurrency}`);
+      const data = await response.json();
+      
+      if (!data.rates) {
+        throw new Error('Failed to fetch exchange rates');
+      }
+
+      const conversionPromises = group.expenses.map(async (expense) => {
+        const fromCurrency = expense.currency || 'USD';
+        
+        if (fromCurrency === targetCurrency) {
+          return;
+        }
+
+        const rate = 1 / data.rates[fromCurrency];
+        
+        const convertedExpense = {
+          ...expense,
+          amount: expense.amount * rate,
+          currency: targetCurrency
+        };
+
+        if (expense.isMultiplePayers && expense.paidBy) {
+          convertedExpense.paidBy = expense.paidBy.map(payer => ({
+            ...payer,
+            amount: payer.amount * rate
+          }));
+        }
+
+        if (expense.splitAmounts) {
+          const convertedSplitAmounts = {};
+          Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
+            convertedSplitAmounts[member] = amount * rate;
+          });
+          convertedExpense.splitAmounts = convertedSplitAmounts;
+        }
+
+        await onEditExpense(expense.id, convertedExpense);
+      });
+
+      await Promise.all(conversionPromises);
+      
+      setShowConvertDialog(false);
+      Alert.alert('Success', `Successfully converted all expenses to ${targetCurrency}`);
+    } catch (error) {
+      console.error('Conversion error:', error);
+      Alert.alert('Error', 'Failed to convert currencies. Please try again.');
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  const filteredExpenses = useMemo(() => {
+    if (expenseFilterCurrency === 'all') {
+      return group.expenses;
+    }
+    return group.expenses.filter(e => (e.currency || 'USD') === expenseFilterCurrency);
+  }, [group.expenses, expenseFilterCurrency]);
+
+  const availableCurrencies = useMemo(() => {
+    const currencies = new Set(group.expenses.map(e => e.currency || 'USD'));
+    return ['all', ...Array.from(currencies)];
+  }, [group.expenses]);
 
   const formatCurrency = (amount, currency = 'USD') => {
     const symbols = {
@@ -126,66 +289,123 @@ function ExpenseTracker({ group, currentUser, navigation, onAddExpense, onDelete
         </View>
       </View>
 
-      <View style={styles.actionButtons}>
-        <TouchableOpacity
-          style={[styles.actionButton, showSettleUp && styles.actionButtonActive]}
-          onPress={() => setShowSettleUp(!showSettleUp)}
-        >
-          <Text style={styles.actionButtonText}>💸 Settle Up</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, showTotals && styles.actionButtonActive]}
-          onPress={() => setShowTotals(!showTotals)}
-        >
-          <Text style={styles.actionButtonText}>📊 Totals</Text>
-        </TouchableOpacity>
-      </View>
-
-      {showSettleUp && (
-        <View style={styles.calculatorContainer}>
-          <BalanceCalculator group={group} currentUser={currentUser} mode="settle" />
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[styles.actionButton, showSettleUp && styles.actionButtonActive]}
+            onPress={() => setShowSettleUp(!showSettleUp)}
+          >
+            <Text style={[styles.actionButtonText, showSettleUp && styles.actionButtonTextActive]}>💸 Settle Up</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, showTotals && styles.actionButtonActive]}
+            onPress={() => setShowTotals(!showTotals)}
+          >
+            <Text style={[styles.actionButtonText, showTotals && styles.actionButtonTextActive]}>📊 Totals</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={exportToCSV}
+          >
+            <Text style={styles.actionButtonText}>📥 Export</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => setShowConvertDialog(true)}
+          >
+            <Text style={styles.actionButtonText}>💱 Convert</Text>
+          </TouchableOpacity>
         </View>
-      )}
 
-      {showTotals && (
-        <View style={styles.calculatorContainer}>
-          <BalanceCalculator group={group} currentUser={currentUser} mode="totals" />
-        </View>
-      )}
-
-      <View style={styles.expensesHeader}>
-        <Text style={styles.expensesTitle}>Expenses ({group.expenses.length})</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setShowForm(!showForm)}
-        >
-          <Text style={styles.addButtonText}>{showForm ? 'Cancel' : '+ Add Expense'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {showForm && (
-        <View style={styles.formContainer}>
-          <ExpenseForm
-            members={group.members}
-            currentUser={currentUser}
-            onSubmit={handleAddExpense}
-            onCancel={() => setShowForm(false)}
-          />
-        </View>
-      )}
-
-      <ScrollView style={styles.expensesList}>
-        {group.expenses.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No expenses yet. Add one to get started!</Text>
+        {showSettleUp && (
+          <View style={styles.calculatorContainer}>
+            <BalanceCalculator group={group} currentUser={currentUser} mode="settle" />
           </View>
-        ) : (
-          group.expenses.map((expense) => (
-            <TouchableOpacity
-              key={expense.id}
-              style={styles.expenseCard}
-              onPress={() => setExpandedExpense(expandedExpense === expense.id ? null : expense.id)}
-            >
+        )}
+
+        {showTotals && (
+          <View style={styles.calculatorContainer}>
+            <BalanceCalculator group={group} currentUser={currentUser} mode="totals" />
+          </View>
+        )}
+
+        <View style={styles.expensesHeader}>
+          <Text style={styles.expensesTitle}>Expenses ({filteredExpenses.length})</Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => setShowForm(!showForm)}
+          >
+            <Text style={styles.addButtonText}>{showForm ? 'Cancel' : '+ Add Expense'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {availableCurrencies.length > 2 && (
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Filter:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+              {availableCurrencies.map(currency => (
+                <TouchableOpacity
+                  key={currency}
+                  style={[
+                    styles.filterButton,
+                    expenseFilterCurrency === currency && styles.filterButtonActive
+                  ]}
+                  onPress={() => setExpenseFilterCurrency(currency)}
+                >
+                  <Text style={[
+                    styles.filterButtonText,
+                    expenseFilterCurrency === currency && styles.filterButtonTextActive
+                  ]}>
+                    {currency === 'all' ? 'All' : currency}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {showForm && !editingExpense && (
+          <View style={styles.formContainer}>
+            <ExpenseForm
+              members={group.members}
+              currentUser={currentUser}
+              onSubmit={handleAddExpense}
+              onCancel={() => setShowForm(false)}
+            />
+          </View>
+        )}
+
+        {editingExpense && (
+          <View style={styles.formContainer}>
+            <ExpenseForm
+              members={group.members}
+              currentUser={currentUser}
+              onSubmit={handleEditExpense}
+              onCancel={() => {
+                setEditingExpense(null);
+                setExpandedExpense(null);
+              }}
+              initialExpense={editingExpense}
+            />
+          </View>
+        )}
+
+        <View style={styles.expensesList}>
+          {filteredExpenses.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>
+                {expenseFilterCurrency === 'all' 
+                  ? 'No expenses yet. Add one to get started!'
+                  : `No expenses in ${expenseFilterCurrency}`}
+              </Text>
+            </View>
+          ) : (
+            filteredExpenses.map((expense) => (
+              <TouchableOpacity
+                key={expense.id}
+                style={styles.expenseCard}
+                onPress={() => setExpandedExpense(expandedExpense === expense.id ? null : expense.id)}
+              >
               <View style={styles.expenseHeader}>
                 <Text style={styles.expenseDescription}>{expense.description}</Text>
                 <Text style={styles.expenseAmount}>
@@ -193,28 +413,116 @@ function ExpenseTracker({ group, currentUser, navigation, onAddExpense, onDelete
                 </Text>
               </View>
               <Text style={styles.expenseDetails}>
-                Paid by {expense.paidBy} on {new Date(expense.date).toLocaleDateString()}
+                {expense.isMultiplePayers 
+                  ? `Paid by ${expense.paidBy.length} people` 
+                  : `Paid by ${expense.paidBy}`} on {new Date(expense.date).toLocaleDateString()}
               </Text>
 
               {expandedExpense === expense.id && (
                 <View style={styles.expandedDetails}>
+                  {expense.isMultiplePayers && (
+                    <View style={styles.multiplePayersSection}>
+                      <Text style={styles.multiplePayersTitle}>Paid by:</Text>
+                      {expense.paidBy.map((payer, idx) => (
+                        <Text key={idx} style={styles.payerItem}>
+                          • {payer.member}: {formatCurrency(payer.amount, expense.currency)}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                  <Text style={styles.detailsText}>
+                    Split type: {expense.splitType || 'equally'}
+                  </Text>
                   <Text style={styles.detailsText}>
                     Split between: {expense.splitBetween?.join(', ') || 'All members'}
                   </Text>
-                  <View style={styles.expenseActions}>
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => handleDeleteExpense(expense.id)}
-                    >
-                      <Text style={styles.deleteButtonText}>Delete</Text>
-                    </TouchableOpacity>
+                    {expense.splitAmounts && (
+                      <View style={styles.splitAmountsContainer}>
+                        <Text style={styles.splitAmountsTitle}>Custom split:</Text>
+                        {Object.entries(expense.splitAmounts).map(([member, amount]) => (
+                          <Text key={member} style={styles.splitAmountItem}>
+                            • {member}: {formatCurrency(amount, expense.currency)}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+                    <View style={styles.expenseActions}>
+                      <TouchableOpacity
+                        style={styles.editButton}
+                        onPress={() => {
+                          setEditingExpense(expense);
+                          setShowForm(false);
+                        }}
+                      >
+                        <Text style={styles.editButtonText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={() => handleDeleteExpense(expense.id)}
+                      >
+                        <Text style={styles.deleteButtonText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))
-        )}
+                )}
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
       </ScrollView>
+
+      <Modal
+        visible={showConvertDialog}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowConvertDialog(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Convert All Expenses</Text>
+            <Text style={styles.modalText}>
+              This will convert all expenses to a single currency using current exchange rates.
+            </Text>
+            <Text style={styles.modalLabel}>Target Currency:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.currencyPicker}>
+              {['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNY', 'INR', 'KRW'].map(currency => (
+                <TouchableOpacity
+                  key={currency}
+                  style={[
+                    styles.currencyButton,
+                    targetCurrency === currency && styles.currencyButtonActive
+                  ]}
+                  onPress={() => setTargetCurrency(currency)}
+                >
+                  <Text style={[
+                    styles.currencyButtonText,
+                    targetCurrency === currency && styles.currencyButtonTextActive
+                  ]}>
+                    {currency}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowConvertDialog(false)}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalConvertButton, isConverting && styles.modalConvertButtonDisabled]}
+                onPress={convertAllExpenses}
+                disabled={isConverting}
+              >
+                <Text style={styles.modalConvertButtonText}>
+                  {isConverting ? 'Converting...' : 'Convert'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -223,6 +531,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   header: {
     backgroundColor: '#fff',
@@ -266,13 +580,16 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
-    padding: 16,
-    gap: 12,
+    flexWrap: 'wrap',
+    padding: 12,
+    gap: 8,
   },
   actionButton: {
     flex: 1,
+    minWidth: 80,
     backgroundColor: '#fff',
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 6,
     alignItems: 'center',
     borderWidth: 1,
@@ -283,8 +600,13 @@ const styles = StyleSheet.create({
     borderColor: '#2c3e50',
   },
   actionButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  actionButtonTextActive: {
+    color: '#fff',
   },
   calculatorContainer: {
     backgroundColor: '#fff',
@@ -323,7 +645,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   expensesList: {
-    flex: 1,
     paddingHorizontal: 16,
   },
   expenseCard: {
@@ -370,6 +691,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  editButton: {
+    backgroundColor: '#2c3e50',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    flex: 1,
+  },
+  editButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   deleteButton: {
     backgroundColor: '#dc2626',
     paddingHorizontal: 16,
@@ -377,10 +712,164 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 2,
     borderColor: '#e5e7eb',
+    flex: 1,
   },
   deleteButtonText: {
     color: '#fff',
     fontWeight: '500',
+    textAlign: 'center',
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#2c3e50',
+    marginRight: 8,
+  },
+  filterScroll: {
+    flex: 1,
+  },
+  filterButton: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  filterButtonActive: {
+    backgroundColor: '#2c3e50',
+    borderColor: '#2c3e50',
+  },
+  filterButtonText: {
+    fontSize: 13,
+    color: '#2c3e50',
+  },
+  filterButtonTextActive: {
+    color: '#fff',
+  },
+  splitAmountsContainer: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  splitAmountsTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 4,
+  },
+  splitAmountItem: {
+    fontSize: 13,
+    color: '#7f8c8d',
+    marginLeft: 8,
+  },
+  multiplePayersSection: {
+    marginBottom: 12,
+    padding: 8,
+    backgroundColor: '#f9fafb',
+    borderRadius: 6,
+  },
+  multiplePayersTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 4,
+  },
+  payerItem: {
+    fontSize: 13,
+    color: '#7f8c8d',
+    marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 12,
+  },
+  modalText: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+  currencyPicker: {
+    marginBottom: 20,
+  },
+  currencyButton: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  currencyButtonActive: {
+    backgroundColor: '#2c3e50',
+    borderColor: '#2c3e50',
+  },
+  currencyButtonText: {
+    fontSize: 14,
+    color: '#2c3e50',
+  },
+  currencyButtonTextActive: {
+    color: '#fff',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  modalCancelButtonText: {
+    color: '#2c3e50',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  modalConvertButton: {
+    flex: 1,
+    backgroundColor: '#2c3e50',
+    paddingVertical: 12,
+    borderRadius: 6,
+  },
+  modalConvertButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalConvertButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+    textAlign: 'center',
   },
   emptyState: {
     padding: 48,
