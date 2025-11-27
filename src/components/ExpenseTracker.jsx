@@ -1,63 +1,650 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import './ExpenseTracker.css'
 import ExpenseForm from './ExpenseForm'
 import BalanceCalculator from './BalanceCalculator'
 
-function ExpenseTracker({ group, onBack, onAddExpense, onDeleteExpense }) {
+function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup }) {
   const [showForm, setShowForm] = useState(false)
+  const [expandedExpense, setExpandedExpense] = useState(null)
+  const [editingExpense, setEditingExpense] = useState(null)
+  const [showTotals, setShowTotals] = useState(false)
+  const [showSettleUp, setShowSettleUp] = useState(false)
+  const [expenseFilterCurrency, setExpenseFilterCurrency] = useState('all')
+  const [showConvertDialog, setShowConvertDialog] = useState(false)
+  const [targetCurrency, setTargetCurrency] = useState('USD')
+  const [isConverting, setIsConverting] = useState(false)
+
+  // Check if current user has any outstanding balances (owes OR is owed)
+  const userHasOutstandingBalances = useMemo(() => {
+    const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))]
+    
+    for (const currency of currencies) {
+      const currencyExpenses = group.expenses.filter(e => (e.currency || 'USD') === currency)
+      let balance = 0
+
+      currencyExpenses.forEach(expense => {
+        // Add what user paid
+        if (expense.isMultiplePayers) {
+          const userPayment = expense.paidBy.find(p => p.member === currentUser.username)
+          if (userPayment) {
+            balance += userPayment.amount
+          }
+        } else if (expense.paidBy === currentUser.username) {
+          balance += expense.amount
+        }
+
+        // Subtract what user owes
+        if (expense.splitAmounts && expense.splitAmounts[currentUser.username]) {
+          balance -= expense.splitAmounts[currentUser.username]
+        } else if (expense.splitBetween && expense.splitBetween.includes(currentUser.username)) {
+          balance -= expense.amount / expense.splitBetween.length
+        } else if (!expense.splitBetween) {
+          // Split among all members
+          balance -= expense.amount / group.members.length
+        }
+      })
+
+      // If balance is non-zero (owes money OR is owed money), has outstanding balances
+      if (Math.abs(balance) > 0.01) {
+        return true
+      }
+    }
+
+    return false
+  }, [group.expenses, group.members, currentUser.username])
+
+  const handleShareGroup = () => {
+    const shareUrl = `${window.location.origin}/join/${group.code}`
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      alert(`Share link copied to clipboard!\n\nAnyone with this link can join the group:\n${shareUrl}`)
+    }).catch(() => {
+      // Fallback if clipboard API fails
+      prompt('Copy this link to share:', shareUrl)
+    })
+  }
 
   const handleAddExpense = (expense) => {
     onAddExpense(expense)
     setShowForm(false)
   }
 
+  const handleEditExpense = (expense) => {
+    onEditExpense(editingExpense.id, expense)
+    setEditingExpense(null)
+    setExpandedExpense(null)
+  }
+
+  const handleDeleteExpense = (expenseId) => {
+    onDeleteExpense(expenseId)
+    setExpandedExpense(null)
+  }
+
+  const toggleExpense = (expenseId) => {
+    if (expandedExpense === expenseId) {
+      setExpandedExpense(null)
+    } else {
+      setExpandedExpense(expenseId)
+      setEditingExpense(null)
+    }
+  }
+
+  const handleLeaveGroup = () => {
+    if (userHasOutstandingBalances) {
+      alert('You cannot leave the group while you have outstanding balances. Please settle all debts first.')
+      return
+    }
+
+    if (confirm(`Are you sure you want to leave "${group.name}"? This action cannot be undone.`)) {
+      onLeaveGroup()
+    }
+  }
+
+  const calculateTotals = useMemo(() => {
+    // Group expenses by currency
+    const totalsPerCurrency = {}
+    
+    if (!group.expenses || group.expenses.length === 0 || !group.members) {
+      return { 'USD': { totalSpend: 0, memberShares: {} } }
+    }
+    
+    group.expenses.forEach(expense => {
+      const currency = expense.currency || 'USD'
+      if (!totalsPerCurrency[currency]) {
+        totalsPerCurrency[currency] = {
+          totalSpend: 0,
+          memberShares: {}
+        }
+        if (Array.isArray(group.members)) {
+          group.members.forEach(member => {
+            totalsPerCurrency[currency].memberShares[member] = 0
+          })
+        }
+      }
+      
+      totalsPerCurrency[currency].totalSpend += expense.amount
+      
+      if (expense.splitAmounts) {
+        Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
+          if (!totalsPerCurrency[currency].memberShares[member]) {
+            totalsPerCurrency[currency].memberShares[member] = 0
+          }
+          totalsPerCurrency[currency].memberShares[member] += amount
+        })
+      } else if (expense.splitBetween) {
+        const sharePerPerson = expense.amount / expense.splitBetween.length
+        expense.splitBetween.forEach(member => {
+          if (!totalsPerCurrency[currency].memberShares[member]) {
+            totalsPerCurrency[currency].memberShares[member] = 0
+          }
+          totalsPerCurrency[currency].memberShares[member] += sharePerPerson
+        })
+      }
+    })
+
+    return totalsPerCurrency
+  }, [group.expenses, group.members])
+
+  const exportToCSV = () => {
+    let csv = 'Date,Description,Amount,Currency,Paid By,Split Type,Split Details\n'
+    
+    group.expenses.forEach(expense => {
+      const date = new Date(expense.date).toLocaleDateString()
+      const description = `"${expense.description}"`
+      const amount = expense.amount.toFixed(2)
+      const currency = expense.currency || 'USD'
+      
+      let paidBy = ''
+      if (expense.isMultiplePayers) {
+        paidBy = `"${expense.paidBy.map(p => `${p.member}: ${currency} ${p.amount.toFixed(2)}`).join('; ')}"`
+      } else {
+        paidBy = expense.paidBy
+      }
+      
+      const splitType = expense.splitType || 'equally'
+      
+      let splitDetails = ''
+      if (expense.splitAmounts) {
+        splitDetails = `"${Object.entries(expense.splitAmounts).map(([member, amt]) => `${member}: ${currency} ${amt.toFixed(2)}`).join('; ')}"`
+      } else {
+        splitDetails = `"${expense.splitBetween?.join(', ') || 'All members'}"`
+      }
+      
+      csv += `${date},${description},${amount},${currency},${paidBy},${splitType},${splitDetails}\n`
+    })
+    
+    // Create download link
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${group.name}_expenses_${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
+  const convertAllExpenses = async () => {
+    setIsConverting(true)
+    try {
+      // Get all unique currencies in current expenses
+      const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))]
+      
+      // If all expenses are already in target currency, no need to convert
+      if (currencies.length === 1 && currencies[0] === targetCurrency) {
+        alert('All expenses are already in ' + targetCurrency)
+        setShowConvertDialog(false)
+        setIsConverting(false)
+        return
+      }
+
+      // Fetch exchange rates from exchangerate-api (free API)
+      const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${targetCurrency}`)
+      const data = await response.json()
+      
+      if (!data.rates) {
+        throw new Error('Failed to fetch exchange rates')
+      }
+
+      // Convert each expense
+      const conversionPromises = group.expenses.map(async (expense) => {
+        const fromCurrency = expense.currency || 'USD'
+        
+        // Skip if already in target currency
+        if (fromCurrency === targetCurrency) {
+          return
+        }
+
+        // Calculate conversion: amount in fromCurrency -> targetCurrency
+        // Since we have rates from targetCurrency perspective, we need to invert
+        const rate = 1 / data.rates[fromCurrency]
+        
+        const convertedExpense = {
+          ...expense,
+          amount: expense.amount * rate,
+          currency: targetCurrency
+        }
+
+        // If multiple payers, convert their amounts too
+        if (expense.isMultiplePayers && expense.paidBy) {
+          convertedExpense.paidBy = expense.paidBy.map(payer => ({
+            ...payer,
+            amount: payer.amount * rate
+          }))
+        }
+
+        // If custom split amounts, convert them too
+        if (expense.splitAmounts) {
+          const convertedSplitAmounts = {}
+          Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
+            convertedSplitAmounts[member] = amount * rate
+          })
+          convertedExpense.splitAmounts = convertedSplitAmounts
+        }
+
+        // Update the expense
+        await onEditExpense(expense.id, convertedExpense)
+      })
+
+      await Promise.all(conversionPromises)
+      
+      setShowConvertDialog(false)
+      alert(`Successfully converted all expenses to ${targetCurrency}`)
+    } catch (error) {
+      console.error('Conversion error:', error)
+      alert('Failed to convert currencies. Please try again.')
+    } finally {
+      setIsConverting(false)
+    }
+  }
+
+  const currentUsername = currentUser.username
+
   return (
     <div className="expense-tracker">
-      <div className="tracker-header">
+      <div className="back-button-row">
         <button className="secondary" onClick={onBack}>← Back to Groups</button>
+        <div className="right-buttons">
+          <button className="share-group-btn" onClick={handleShareGroup}>
+            🔗 Share Group
+          </button>
+          <button 
+            className="leave-group-btn" 
+            onClick={handleLeaveGroup}
+            disabled={userHasOutstandingBalances}
+            title={userHasOutstandingBalances ? "You cannot leave while you have outstanding balances" : "Leave this group"}
+          >
+            🚪 Leave Group
+          </button>
+        </div>
+      </div>
+      <div className="tracker-header">
         <h2>{group.name}</h2>
-        <button onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : '+ Add Expense'}
+      </div>
+
+      <div className="info-buttons">
+        <button 
+          className={`info-btn ${showSettleUp ? 'active' : ''}`}
+          onClick={() => setShowSettleUp(!showSettleUp)}
+        >
+          💸 Settle Up
+        </button>
+        <button 
+          className={`info-btn ${showTotals ? 'active' : ''}`}
+          onClick={() => setShowTotals(!showTotals)}
+        >
+          📊 Totals
+        </button>
+        <button 
+          className="info-btn"
+          onClick={exportToCSV}
+        >
+          📥 Export CSV
+        </button>
+        <button 
+          className="info-btn"
+          onClick={() => setShowConvertDialog(true)}
+        >
+          💱 Convert Currency
+        </button>
+      </div>
+
+      {showConvertDialog && (
+        <div className="modal-overlay" onClick={() => setShowConvertDialog(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>💱 Convert All Expenses</h3>
+            <p>Convert all expenses to a single currency using current exchange rates.</p>
+            <p className="currency-info">
+              Current currencies: {[...new Set(group.expenses.map(e => e.currency || 'USD'))].join(', ')}
+            </p>
+            
+            <div className="convert-currency-selector">
+              <label>Target Currency:</label>
+              <select 
+                value={targetCurrency} 
+                onChange={(e) => setTargetCurrency(e.target.value)}
+              >
+                <option value="USD">USD $</option>
+                <option value="EUR">EUR €</option>
+                <option value="GBP">GBP £</option>
+                <option value="JPY">JPY ¥</option>
+                <option value="AUD">AUD A$</option>
+                <option value="CAD">CAD C$</option>
+                <option value="CHF">CHF Fr</option>
+                <option value="CNY">CNY ¥</option>
+                <option value="INR">INR ₹</option>
+                <option value="KRW">KRW ₩</option>
+                <option value="SGD">SGD S$</option>
+                <option value="HKD">HKD HK$</option>
+                <option value="NZD">NZD NZ$</option>
+                <option value="SEK">SEK kr</option>
+                <option value="NOK">NOK kr</option>
+                <option value="DKK">DKK kr</option>
+                <option value="MXN">MXN $</option>
+                <option value="BRL">BRL R$</option>
+                <option value="RUB">RUB ₽</option>
+                <option value="ZAR">ZAR R</option>
+              </select>
+            </div>
+
+            <div className="modal-actions">
+              <button 
+                className="secondary" 
+                onClick={() => setShowConvertDialog(false)}
+                disabled={isConverting}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={convertAllExpenses}
+                disabled={isConverting}
+              >
+                {isConverting ? 'Converting...' : 'Convert All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSettleUp && (
+        <BalanceCalculator 
+          expenses={group.expenses}
+          members={group.members}
+          currentUser={currentUser}
+          showSettlements={true}
+        />
+      )}
+
+      {showTotals && (
+        <div className="card totals-section">
+          <h3>📊 Group Totals</h3>
+          {Object.entries(calculateTotals).map(([currency, data]) => {
+            const userShare = data.memberShares[currentUsername] || 0
+            return (
+              <div key={currency} className="currency-totals">
+                <h4 className="currency-heading">{currency}</h4>
+                <div className="totals-grid">
+                  <div className="total-item highlight">
+                    <span className="total-label">Total Group Spend</span>
+                    <span className="total-amount">{currency} {data.totalSpend.toFixed(2)}</span>
+                  </div>
+                  <div className="total-item your-share">
+                    <span className="total-label">Your Total Share</span>
+                    <span className="total-amount">{currency} {userShare.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <BalanceCalculator 
+        expenses={group.expenses}
+        members={group.members}
+        currentUser={currentUser}
+        showSettlements={false}
+      />
+
+      <div className="add-expense-section">
+        <button onClick={() => setShowForm(!showForm)} className="add-expense-btn">
+          {showForm ? '✕ Cancel' : '+ Add New Expense'}
         </button>
       </div>
 
       {showForm && (
         <ExpenseForm 
           members={group.members}
+          currentUser={currentUser}
           onSubmit={handleAddExpense}
         />
       )}
 
-      <BalanceCalculator 
-        expenses={group.expenses}
-        members={group.members}
-      />
-
       <div className="expenses-section card">
-        <h3>All Expenses</h3>
+        <div className="expenses-header">
+          <h3>All Expenses</h3>
+          {(() => {
+            const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))].sort()
+            return currencies.length > 1 && (
+              <select 
+                value={expenseFilterCurrency}
+                onChange={(e) => setExpenseFilterCurrency(e.target.value)}
+                className="currency-filter"
+              >
+                <option value="all">All Currencies</option>
+                {currencies.map(curr => (
+                  <option key={curr} value={curr}>{curr}</option>
+                ))}
+              </select>
+            )
+          })()}
+        </div>
         {group.expenses.length === 0 ? (
           <p className="empty-message">No expenses yet. Add one to get started!</p>
         ) : (
           <div className="expenses-list">
-            {group.expenses.map(expense => (
-              <div key={expense.id} className="expense-item">
-                <div className="expense-details">
-                  <h4>{expense.description}</h4>
-                  <p className="expense-info">
-                    Paid by <strong>{expense.paidBy}</strong> • ${expense.amount.toFixed(2)}
-                  </p>
-                  <p className="expense-split">
-                    Split between: {expense.splitBetween.join(', ')}
-                  </p>
+            {group.expenses
+              .filter(expense => expenseFilterCurrency === 'all' || (expense.currency || 'USD') === expenseFilterCurrency)
+              .map(expense => {
+              const splitInfo = expense.splitAmounts 
+                ? Object.entries(expense.splitAmounts).map(([member, amt]) => `${member}: $${amt.toFixed(2)}`).join(', ')
+                : `Split equally: ${expense.splitBetween?.join(', ') || 'All members'}`
+              
+              const expenseDate = expense.date ? new Date(expense.date) : new Date()
+              const month = expenseDate.toLocaleString('default', { month: 'short' }).toUpperCase()
+              const day = expenseDate.getDate()
+              const isExpanded = expandedExpense === expense.id
+              const isEditing = editingExpense?.id === expense.id
+              
+              // Calculate user's involvement
+              let userInvolvement = { type: 'not-involved', amount: 0 }
+              if (expense.splitAmounts && expense.splitAmounts[currentUsername]) {
+                userInvolvement = { type: 'borrowed', amount: expense.splitAmounts[currentUsername] }
+              }
+              if (expense.isMultiplePayers) {
+                const userPayment = expense.paidBy.find(p => p.member === currentUsername)
+                if (userPayment) {
+                  const borrowed = expense.splitAmounts?.[currentUsername] || 0
+                  const net = userPayment.amount - borrowed
+                  if (net > 0) {
+                    userInvolvement = { type: 'lent', amount: net }
+                  } else if (net < 0) {
+                    userInvolvement = { type: 'borrowed', amount: Math.abs(net) }
+                  } else {
+                    userInvolvement = { type: 'even', amount: 0 }
+                  }
+                }
+              } else if (expense.paidBy === currentUsername) {
+                const borrowed = expense.splitAmounts?.[currentUsername] || 0
+                const net = expense.amount - borrowed
+                if (net > 0) {
+                  userInvolvement = { type: 'lent', amount: net }
+                } else if (net < 0) {
+                  userInvolvement = { type: 'borrowed', amount: Math.abs(net) }
+                } else {
+                  userInvolvement = { type: 'even', amount: 0 }
+                }
+              }
+              
+              return (
+                <div key={expense.id} className={`expense-item ${isExpanded ? 'expanded' : ''}`}>
+                  <div 
+                    className="expense-summary"
+                    onClick={() => !isEditing && toggleExpense(expense.id)}
+                  >
+                    <div className="expense-date">
+                      <div className="month">{month}</div>
+                      <div className="day">{day}</div>
+                    </div>
+                    <div className="expense-details">
+                      <h4>{expense.description}</h4>
+                      <p className="expense-info">
+                        {expense.isMultiplePayers ? (
+                          <>Paid by <strong>multiple people</strong> • {expense.currency || 'USD'} {expense.amount.toFixed(2)}</>
+                        ) : (
+                          <>Paid by <strong>{expense.paidBy === currentUsername ? 'You' : expense.paidBy}</strong> • {expense.currency || 'USD'} {expense.amount.toFixed(2)}</>
+                        )}
+                      </p>
+                      {!isExpanded && (
+                        <p className="expense-split">
+                          {expense.splitType && expense.splitType !== 'equally' && (
+                            <span className="split-type-badge">
+                              {expense.splitType === 'unequally' ? 'Unequal split' :
+                               expense.splitType === 'percentages' ? 'Percentage split' :
+                               expense.splitType === 'adjustment' ? 'Adjusted split' :
+                               expense.splitType === 'shares' ? 'Share-based split' : ''}
+                            </span>
+                          )}
+                          {splitInfo.length > 50 ? splitInfo.substring(0, 50) + '...' : splitInfo}
+                        </p>
+                      )}
+                    </div>
+                    <div className="expense-involvement">
+                      {userInvolvement.type === 'lent' && (
+                        <div className="involvement-badge lent">
+                          You lent ${userInvolvement.amount.toFixed(2)}
+                        </div>
+                      )}
+                      {userInvolvement.type === 'borrowed' && (
+                        <div className="involvement-badge borrowed">
+                          You borrowed ${userInvolvement.amount.toFixed(2)}
+                        </div>
+                      )}
+                      {userInvolvement.type === 'not-involved' && (
+                        <div className="involvement-badge not-involved">
+                          Not involved
+                        </div>
+                      )}
+                      {userInvolvement.type === 'even' && (
+                        <div className="involvement-badge even">
+                          Even
+                        </div>
+                      )}
+                    </div>
+                    <div className="expand-icon">
+                      {isExpanded ? '▼' : '▶'}
+                    </div>
+                  </div>
+
+                  {isExpanded && !isEditing && (
+                    <div className="expense-expanded">
+                      <div className="expanded-section">
+                        <h5>💰 Payment Details</h5>
+                        {expense.isMultiplePayers ? (
+                          <div className="detail-list">
+                            {expense.paidBy.map(payer => (
+                              <div key={payer.member} className="detail-item">
+                                <strong>{payer.member}</strong> paid ${payer.amount.toFixed(2)}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="detail-item">
+                            <strong>{expense.paidBy}</strong> paid ${expense.amount.toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="expanded-section">
+                        <h5>📊 Split Details</h5>
+                        {expense.splitType && expense.splitType !== 'equally' && (
+                          <p className="split-type-info">
+                            <span className="split-type-badge">
+                              {expense.splitType === 'unequally' ? 'Unequal split' :
+                               expense.splitType === 'percentages' ? 'Percentage split' :
+                               expense.splitType === 'adjustment' ? 'Adjusted split' :
+                               expense.splitType === 'shares' ? 'Share-based split' : ''}
+                            </span>
+                          </p>
+                        )}
+                        <div className="detail-list">
+                          {expense.splitAmounts && Object.entries(expense.splitAmounts).map(([member, amt]) => (
+                            <div key={member} className="detail-item">
+                              <strong>{member}</strong> owes ${amt.toFixed(2)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="expanded-section">
+                        <h5>📅 History</h5>
+                        <div className="detail-item">
+                          Created on {new Date(expense.date).toLocaleDateString()} at {new Date(expense.date).toLocaleTimeString()}
+                          {expense.createdBy && (
+                            <> by <strong>{expense.createdBy === currentUsername ? 'You' : expense.createdBy}</strong></>
+                          )}
+                        </div>
+                        {expense.modifiedDate && (
+                          <div className="detail-item">
+                            Last modified on {new Date(expense.modifiedDate).toLocaleDateString()} at {new Date(expense.modifiedDate).toLocaleTimeString()}
+                            {expense.modifiedBy && (
+                              <> by <strong>{expense.modifiedBy === currentUsername ? 'You' : expense.modifiedBy}</strong></>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="expense-actions">
+                        <button 
+                          className="secondary"
+                          onClick={() => {
+                            setEditingExpense(expense)
+                            setExpandedExpense(null)
+                          }}
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button 
+                          className="danger"
+                          onClick={() => handleDeleteExpense(expense.id)}
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {isEditing && (
+                    <div className="expense-edit-form">
+                      <h4>Edit Expense</h4>
+                      <ExpenseForm 
+                        members={group.members}
+                        currentUser={currentUser}
+                        onSubmit={handleEditExpense}
+                        initialData={expense}
+                      />
+                      <button 
+                        className="secondary"
+                        onClick={() => setEditingExpense(null)}
+                        style={{ marginTop: '1rem', width: '100%' }}
+                      >
+                        Cancel Edit
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <button 
-                  className="danger small"
-                  onClick={() => onDeleteExpense(expense.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

@@ -1,36 +1,374 @@
+.expense-form {
+  background: #fafafa;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
 .expense-form h3 {
-  color: #374151;
-  margin-bottom: 1rem;
+  color: var(--text-primary);
+  margin-bottom: 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .expense-form label {
   display: block;
-  color: #374151;
-  font-weight: 600;
+  color: var(--text-primary);
+  font-weight: 500;
   margin-bottom: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.expense-form label:first-of-type {
+  margin-top: 0;
+}
+
+.amount-currency-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.amount-currency-row .currency-select {
+  flex: 0 0 auto;
+  width: 120px;
+  padding: 0.625rem 0.875rem;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 0;
+}
+
+.amount-currency-row input {
+  flex: 1;
+  margin-bottom: 0;
+  padding: 0.625rem 0.875rem;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.875rem;
 }
 
 .member-checkboxes {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 1rem;
-  background: #f9fafb;
-  border-radius: 8px;
+  background: white;
+  border-radius: 6px;
+  border: 2px solid var(--border);
 }
 
 .checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 0.75rem;
   cursor: pointer;
-  font-weight: normal;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  user-select: none;
+  margin: 0 !important;
+}
+
+.checkbox-label:hover {
+  background-color: var(--bg-secondary);
 }
 
 .checkbox-label input[type="checkbox"] {
-  width: auto;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex: 0 0 18px;
   margin: 0;
+  padding: 0;
   cursor: pointer;
+  accent-color: var(--text-primary);
+  display: inline-block;
+}
+
+.multiple-payers-section {
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  background: white;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+}
+
+.currency-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.currency-selector-row label {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.875rem;
+  flex: 0 0 auto;
+}
+
+.currency-selector-row .currency-select {
+  flex: 1;
+  padding: 0.625rem 0.875rem;
+  margin-bottom: 0;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+}
+
+.multiple-payers-section > label {
+  margin-bottom: 1rem;
+  display: block;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.payer-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.payer-input-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.payer-name {
+  min-width: 120px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.payer-input-row input {
+  flex: 1;
+  margin: 0;
+}
+
+.total-paid {
+  text-align: right;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding-top: 0.75rem;
+  border-top: 2px solid var(--border);
+}
+
+.total-paid .warning {
+  color: #dc2626;
+  font-size: 0.8125rem;
+  margin-left: 0.5rem;
+}
+
+.total-paid .success {
+  color: #059669;
+  font-size: 0.8125rem;
+  margin-left: 0.5rem;
+}
+
+.split-button {
+  width: 100%;
+  text-align: left;
+  background: white;
+  color: var(--text-primary);
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.15s;
+  margin-bottom: 1rem;
+}
+
+.split-button:hover {
+  border-color: var(--text-primary);
+}
+
+.split-button.active {
+  background: var(--text-primary);
+  color: white;
+  border-color: var(--text-primary);
+}
+
+/* New split section design */
+.split-section {
+  margin-top: 1.5rem;
+}
+
+.split-section > label {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.split-type-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0;
+}
+
+.split-type-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.split-type-option:hover {
+  border-color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.split-type-option.active {
+  background: var(--text-primary);
+  color: white;
+  border-color: var(--text-primary);
+}
+
+.split-type-option.active:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-light);
+}
+
+.split-content {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+}
+
+.split-content > label {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  margin-top: 0;
+}
+
+/* Old split styles (can be removed if not needed) */
+.split-options {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  padding: 1.25rem;
+  background: white;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+}
+
+.split-type-buttons {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.split-type-buttons button {
+  flex: 1;
+  min-width: 120px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.split-content {
+  margin-top: 0.5rem;
+}
+
+.split-content > label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.split-amounts {
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.split-amount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  background: #fafafa;
+  border-radius: 4px;
+}
+
+.split-amount-row:last-child {
+  margin-bottom: 0;
+}
+
+.split-amount-row label {
+  margin: 0;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.split-amount-row input {
+  width: 120px;
+  margin: 0;
+}
+
+.validation-message {
+  color: #dc2626;
+  font-size: 0.8125rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #fef2f2;
+  border-radius: 4px;
+  border: 1px solid #fecaca;
+}
+
+.validation-message.success {
+  color: #059669;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.form-actions button {
+  flex: 1;
 }
