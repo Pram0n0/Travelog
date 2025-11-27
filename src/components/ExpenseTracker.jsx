@@ -1,655 +1,396 @@
-import { useState, useMemo } from 'react'
-import './ExpenseTracker.css'
-import ExpenseForm from './ExpenseForm'
-import BalanceCalculator from './BalanceCalculator'
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Alert,
+} from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import * as Sharing from 'expo-sharing';
+import ExpenseForm from './ExpenseForm';
+import BalanceCalculator from './BalanceCalculator';
 
-function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup }) {
-  const [showForm, setShowForm] = useState(false)
-  const [expandedExpense, setExpandedExpense] = useState(null)
-  const [editingExpense, setEditingExpense] = useState(null)
-  const [showTotals, setShowTotals] = useState(false)
-  const [showSettleUp, setShowSettleUp] = useState(false)
-  const [expenseFilterCurrency, setExpenseFilterCurrency] = useState('all')
-  const [showConvertDialog, setShowConvertDialog] = useState(false)
-  const [targetCurrency, setTargetCurrency] = useState('USD')
-  const [isConverting, setIsConverting] = useState(false)
+function ExpenseTracker({ group, currentUser, navigation, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup }) {
+  const [showForm, setShowForm] = useState(false);
+  const [expandedExpense, setExpandedExpense] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [showTotals, setShowTotals] = useState(false);
+  const [showSettleUp, setShowSettleUp] = useState(false);
 
-  // Check if current user has any outstanding balances (owes OR is owed)
   const userHasOutstandingBalances = useMemo(() => {
-    const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))]
+    const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))];
     
     for (const currency of currencies) {
-      const currencyExpenses = group.expenses.filter(e => (e.currency || 'USD') === currency)
-      let balance = 0
+      const currencyExpenses = group.expenses.filter(e => (e.currency || 'USD') === currency);
+      let balance = 0;
 
       currencyExpenses.forEach(expense => {
-        // Add what user paid
         if (expense.isMultiplePayers) {
-          const userPayment = expense.paidBy.find(p => p.member === currentUser.username)
+          const userPayment = expense.paidBy.find(p => p.member === currentUser.username);
           if (userPayment) {
-            balance += userPayment.amount
+            balance += userPayment.amount;
           }
         } else if (expense.paidBy === currentUser.username) {
-          balance += expense.amount
+          balance += expense.amount;
         }
 
-        // Subtract what user owes
         if (expense.splitAmounts && expense.splitAmounts[currentUser.username]) {
-          balance -= expense.splitAmounts[currentUser.username]
+          balance -= expense.splitAmounts[currentUser.username];
         } else if (expense.splitBetween && expense.splitBetween.includes(currentUser.username)) {
-          balance -= expense.amount / expense.splitBetween.length
+          balance -= expense.amount / expense.splitBetween.length;
         } else if (!expense.splitBetween) {
-          // Split among all members
-          balance -= expense.amount / group.members.length
+          balance -= expense.amount / group.members.length;
         }
-      })
+      });
 
-      // If balance is non-zero (owes money OR is owed money), has outstanding balances
       if (Math.abs(balance) > 0.01) {
-        return true
+        return true;
       }
     }
 
-    return false
-  }, [group.expenses, group.members, currentUser.username])
+    return false;
+  }, [group.expenses, group.members, currentUser.username]);
 
-  const handleShareGroup = () => {
-    const shareUrl = `${window.location.origin}/join/${group.code}`
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      alert(`Share link copied to clipboard!\n\nAnyone with this link can join the group:\n${shareUrl}`)
-    }).catch(() => {
-      // Fallback if clipboard API fails
-      prompt('Copy this link to share:', shareUrl)
-    })
-  }
-
-  const handleAddExpense = (expense) => {
-    onAddExpense(expense)
-    setShowForm(false)
-  }
-
-  const handleEditExpense = (expense) => {
-    onEditExpense(editingExpense.id, expense)
-    setEditingExpense(null)
-    setExpandedExpense(null)
-  }
-
-  const handleDeleteExpense = (expenseId) => {
-    onDeleteExpense(expenseId)
-    setExpandedExpense(null)
-  }
-
-  const toggleExpense = (expenseId) => {
-    if (expandedExpense === expenseId) {
-      setExpandedExpense(null)
-    } else {
-      setExpandedExpense(expenseId)
-      setEditingExpense(null)
-    }
-  }
+  const handleShareGroup = async () => {
+    const shareText = `Join my expense group "${group.name}" with code: ${group.code}`;
+    await Clipboard.setStringAsync(shareText);
+    Alert.alert('Copied!', 'Share message copied to clipboard');
+  };
 
   const handleLeaveGroup = () => {
     if (userHasOutstandingBalances) {
-      alert('You cannot leave the group while you have outstanding balances. Please settle all debts first.')
-      return
+      Alert.alert(
+        'Cannot Leave',
+        'You cannot leave the group while you have outstanding balances. Please settle all debts first.'
+      );
+      return;
     }
 
-    if (confirm(`Are you sure you want to leave "${group.name}"? This action cannot be undone.`)) {
-      onLeaveGroup()
-    }
-  }
+    Alert.alert(
+      'Leave Group',
+      `Are you sure you want to leave "${group.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave', style: 'destructive', onPress: onLeaveGroup },
+      ]
+    );
+  };
 
-  const calculateTotals = useMemo(() => {
-    // Group expenses by currency
-    const totalsPerCurrency = {}
-    
-    if (!group.expenses || group.expenses.length === 0 || !group.members) {
-      return { 'USD': { totalSpend: 0, memberShares: {} } }
-    }
-    
-    group.expenses.forEach(expense => {
-      const currency = expense.currency || 'USD'
-      if (!totalsPerCurrency[currency]) {
-        totalsPerCurrency[currency] = {
-          totalSpend: 0,
-          memberShares: {}
-        }
-        if (Array.isArray(group.members)) {
-          group.members.forEach(member => {
-            totalsPerCurrency[currency].memberShares[member] = 0
-          })
-        }
-      }
-      
-      totalsPerCurrency[currency].totalSpend += expense.amount
-      
-      if (expense.splitAmounts) {
-        Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
-          if (!totalsPerCurrency[currency].memberShares[member]) {
-            totalsPerCurrency[currency].memberShares[member] = 0
-          }
-          totalsPerCurrency[currency].memberShares[member] += amount
-        })
-      } else if (expense.splitBetween) {
-        const sharePerPerson = expense.amount / expense.splitBetween.length
-        expense.splitBetween.forEach(member => {
-          if (!totalsPerCurrency[currency].memberShares[member]) {
-            totalsPerCurrency[currency].memberShares[member] = 0
-          }
-          totalsPerCurrency[currency].memberShares[member] += sharePerPerson
-        })
-      }
-    })
+  const handleAddExpense = (expense) => {
+    onAddExpense(expense);
+    setShowForm(false);
+  };
 
-    return totalsPerCurrency
-  }, [group.expenses, group.members])
+  const handleDeleteExpense = (expenseId) => {
+    Alert.alert(
+      'Delete Expense',
+      'Are you sure you want to delete this expense?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            onDeleteExpense(expenseId);
+            setExpandedExpense(null);
+          },
+        },
+      ]
+    );
+  };
 
-  const exportToCSV = () => {
-    let csv = 'Date,Description,Amount,Currency,Paid By,Split Type,Split Details\n'
-    
-    group.expenses.forEach(expense => {
-      const date = new Date(expense.date).toLocaleDateString()
-      const description = `"${expense.description}"`
-      const amount = expense.amount.toFixed(2)
-      const currency = expense.currency || 'USD'
-      
-      let paidBy = ''
-      if (expense.isMultiplePayers) {
-        paidBy = `"${expense.paidBy.map(p => `${p.member}: ${currency} ${p.amount.toFixed(2)}`).join('; ')}"`
-      } else {
-        paidBy = expense.paidBy
-      }
-      
-      const splitType = expense.splitType || 'equally'
-      
-      let splitDetails = ''
-      if (expense.splitAmounts) {
-        splitDetails = `"${Object.entries(expense.splitAmounts).map(([member, amt]) => `${member}: ${currency} ${amt.toFixed(2)}`).join('; ')}"`
-      } else {
-        splitDetails = `"${expense.splitBetween?.join(', ') || 'All members'}"`
-      }
-      
-      csv += `${date},${description},${amount},${currency},${paidBy},${splitType},${splitDetails}\n`
-    })
-    
-    // Create download link
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${group.name}_expenses_${new Date().toISOString().split('T')[0]}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
-  }
-
-  const convertAllExpenses = async () => {
-    setIsConverting(true)
-    try {
-      // Get all unique currencies in current expenses
-      const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))]
-      
-      // If all expenses are already in target currency, no need to convert
-      if (currencies.length === 1 && currencies[0] === targetCurrency) {
-        alert('All expenses are already in ' + targetCurrency)
-        setShowConvertDialog(false)
-        setIsConverting(false)
-        return
-      }
-
-      // Fetch exchange rates from exchangerate-api (free API)
-      const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${targetCurrency}`)
-      const data = await response.json()
-      
-      if (!data.rates) {
-        throw new Error('Failed to fetch exchange rates')
-      }
-
-      // Convert each expense
-      const conversionPromises = group.expenses.map(async (expense) => {
-        const fromCurrency = expense.currency || 'USD'
-        
-        // Skip if already in target currency
-        if (fromCurrency === targetCurrency) {
-          return
-        }
-
-        // Calculate conversion: amount in fromCurrency -> targetCurrency
-        // Since we have rates from targetCurrency perspective, we need to invert
-        const rate = 1 / data.rates[fromCurrency]
-        
-        const convertedExpense = {
-          ...expense,
-          amount: expense.amount * rate,
-          currency: targetCurrency
-        }
-
-        // If multiple payers, convert their amounts too
-        if (expense.isMultiplePayers && expense.paidBy) {
-          convertedExpense.paidBy = expense.paidBy.map(payer => ({
-            ...payer,
-            amount: payer.amount * rate
-          }))
-        }
-
-        // If custom split amounts, convert them too
-        if (expense.splitAmounts) {
-          const convertedSplitAmounts = {}
-          Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
-            convertedSplitAmounts[member] = amount * rate
-          })
-          convertedExpense.splitAmounts = convertedSplitAmounts
-        }
-
-        // Update the expense
-        await onEditExpense(expense.id, convertedExpense)
-      })
-
-      await Promise.all(conversionPromises)
-      
-      setShowConvertDialog(false)
-      alert(`Successfully converted all expenses to ${targetCurrency}`)
-    } catch (error) {
-      console.error('Conversion error:', error)
-      alert('Failed to convert currencies. Please try again.')
-    } finally {
-      setIsConverting(false)
-    }
-  }
-
-  const currentUsername = currentUser.username
+  const formatCurrency = (amount, currency = 'USD') => {
+    const symbols = {
+      USD: '$', EUR: '€', GBP: '£', JPY: '¥', AUD: 'A$',
+      CAD: 'C$', CHF: 'Fr', CNY: '¥', INR: '₹', KRW: '₩'
+    };
+    return `${symbols[currency] || currency} ${amount.toFixed(2)}`;
+  };
 
   return (
-    <div className="expense-tracker">
-      <div className="back-button-row">
-        <button className="secondary" onClick={onBack}>← Back to Groups</button>
-        <div className="right-buttons">
-          <button className="share-group-btn" onClick={handleShareGroup}>
-            🔗 Share Group
-          </button>
-          <button 
-            className="leave-group-btn" 
-            onClick={handleLeaveGroup}
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity style={styles.shareButton} onPress={handleShareGroup}>
+            <Text style={styles.shareButtonText}>🔗 Share</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.leaveButton, userHasOutstandingBalances && styles.leaveButtonDisabled]}
+            onPress={handleLeaveGroup}
             disabled={userHasOutstandingBalances}
-            title={userHasOutstandingBalances ? "You cannot leave while you have outstanding balances" : "Leave this group"}
           >
-            🚪 Leave Group
-          </button>
-        </div>
-      </div>
-      <div className="tracker-header">
-        <h2>{group.name}</h2>
-      </div>
+            <Text style={styles.leaveButtonText}>🚪 Leave</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
-      <div className="info-buttons">
-        <button 
-          className={`info-btn ${showSettleUp ? 'active' : ''}`}
-          onClick={() => setShowSettleUp(!showSettleUp)}
+      <View style={styles.actionButtons}>
+        <TouchableOpacity
+          style={[styles.actionButton, showSettleUp && styles.actionButtonActive]}
+          onPress={() => setShowSettleUp(!showSettleUp)}
         >
-          💸 Settle Up
-        </button>
-        <button 
-          className={`info-btn ${showTotals ? 'active' : ''}`}
-          onClick={() => setShowTotals(!showTotals)}
+          <Text style={styles.actionButtonText}>💸 Settle Up</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, showTotals && styles.actionButtonActive]}
+          onPress={() => setShowTotals(!showTotals)}
         >
-          📊 Totals
-        </button>
-        <button 
-          className="info-btn"
-          onClick={exportToCSV}
-        >
-          📥 Export CSV
-        </button>
-        <button 
-          className="info-btn"
-          onClick={() => setShowConvertDialog(true)}
-        >
-          💱 Convert Currency
-        </button>
-      </div>
-
-      {showConvertDialog && (
-        <div className="modal-overlay" onClick={() => setShowConvertDialog(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>💱 Convert All Expenses</h3>
-            <p>Convert all expenses to a single currency using current exchange rates.</p>
-            <p className="currency-info">
-              Current currencies: {[...new Set(group.expenses.map(e => e.currency || 'USD'))].join(', ')}
-            </p>
-            
-            <div className="convert-currency-selector">
-              <label>Target Currency:</label>
-              <select 
-                value={targetCurrency} 
-                onChange={(e) => setTargetCurrency(e.target.value)}
-              >
-                <option value="USD">USD $</option>
-                <option value="EUR">EUR €</option>
-                <option value="GBP">GBP £</option>
-                <option value="JPY">JPY ¥</option>
-                <option value="AUD">AUD A$</option>
-                <option value="CAD">CAD C$</option>
-                <option value="CHF">CHF Fr</option>
-                <option value="CNY">CNY ¥</option>
-                <option value="INR">INR ₹</option>
-                <option value="KRW">KRW ₩</option>
-                <option value="SGD">SGD S$</option>
-                <option value="HKD">HKD HK$</option>
-                <option value="NZD">NZD NZ$</option>
-                <option value="SEK">SEK kr</option>
-                <option value="NOK">NOK kr</option>
-                <option value="DKK">DKK kr</option>
-                <option value="MXN">MXN $</option>
-                <option value="BRL">BRL R$</option>
-                <option value="RUB">RUB ₽</option>
-                <option value="ZAR">ZAR R</option>
-              </select>
-            </div>
-
-            <div className="modal-actions">
-              <button 
-                className="secondary" 
-                onClick={() => setShowConvertDialog(false)}
-                disabled={isConverting}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={convertAllExpenses}
-                disabled={isConverting}
-              >
-                {isConverting ? 'Converting...' : 'Convert All'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          <Text style={styles.actionButtonText}>📊 Totals</Text>
+        </TouchableOpacity>
+      </View>
 
       {showSettleUp && (
-        <BalanceCalculator 
-          expenses={group.expenses}
-          members={group.members}
-          currentUser={currentUser}
-          showSettlements={true}
-        />
+        <View style={styles.calculatorContainer}>
+          <BalanceCalculator group={group} currentUser={currentUser} mode="settle" />
+        </View>
       )}
 
       {showTotals && (
-        <div className="card totals-section">
-          <h3>📊 Group Totals</h3>
-          {Object.entries(calculateTotals).map(([currency, data]) => {
-            const userShare = data.memberShares[currentUsername] || 0
-            return (
-              <div key={currency} className="currency-totals">
-                <h4 className="currency-heading">{currency}</h4>
-                <div className="totals-grid">
-                  <div className="total-item highlight">
-                    <span className="total-label">Total Group Spend</span>
-                    <span className="total-amount">{currency} {data.totalSpend.toFixed(2)}</span>
-                  </div>
-                  <div className="total-item your-share">
-                    <span className="total-label">Your Total Share</span>
-                    <span className="total-amount">{currency} {userShare.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <View style={styles.calculatorContainer}>
+          <BalanceCalculator group={group} currentUser={currentUser} mode="totals" />
+        </View>
       )}
 
-      <BalanceCalculator 
-        expenses={group.expenses}
-        members={group.members}
-        currentUser={currentUser}
-        showSettlements={false}
-      />
-
-      <div className="add-expense-section">
-        <button onClick={() => setShowForm(!showForm)} className="add-expense-btn">
-          {showForm ? '✕ Cancel' : '+ Add New Expense'}
-        </button>
-      </div>
+      <View style={styles.expensesHeader}>
+        <Text style={styles.expensesTitle}>Expenses ({group.expenses.length})</Text>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => setShowForm(!showForm)}
+        >
+          <Text style={styles.addButtonText}>{showForm ? 'Cancel' : '+ Add Expense'}</Text>
+        </TouchableOpacity>
+      </View>
 
       {showForm && (
-        <ExpenseForm 
-          members={group.members}
-          currentUser={currentUser}
-          onSubmit={handleAddExpense}
-        />
+        <View style={styles.formContainer}>
+          <ExpenseForm
+            members={group.members}
+            currentUser={currentUser}
+            onSubmit={handleAddExpense}
+            onCancel={() => setShowForm(false)}
+          />
+        </View>
       )}
 
-      <div className="expenses-section card">
-        <div className="expenses-header">
-          <h3>All Expenses</h3>
-          {(() => {
-            const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))].sort()
-            return currencies.length > 1 && (
-              <select 
-                value={expenseFilterCurrency}
-                onChange={(e) => setExpenseFilterCurrency(e.target.value)}
-                className="currency-filter"
-              >
-                <option value="all">All Currencies</option>
-                {currencies.map(curr => (
-                  <option key={curr} value={curr}>{curr}</option>
-                ))}
-              </select>
-            )
-          })()}
-        </div>
+      <ScrollView style={styles.expensesList}>
         {group.expenses.length === 0 ? (
-          <p className="empty-message">No expenses yet. Add one to get started!</p>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No expenses yet. Add one to get started!</Text>
+          </View>
         ) : (
-          <div className="expenses-list">
-            {group.expenses
-              .filter(expense => expenseFilterCurrency === 'all' || (expense.currency || 'USD') === expenseFilterCurrency)
-              .map(expense => {
-              const splitInfo = expense.splitAmounts 
-                ? Object.entries(expense.splitAmounts).map(([member, amt]) => `${member}: $${amt.toFixed(2)}`).join(', ')
-                : `Split equally: ${expense.splitBetween?.join(', ') || 'All members'}`
-              
-              const expenseDate = expense.date ? new Date(expense.date) : new Date()
-              const month = expenseDate.toLocaleString('default', { month: 'short' }).toUpperCase()
-              const day = expenseDate.getDate()
-              const isExpanded = expandedExpense === expense.id
-              const isEditing = editingExpense?.id === expense.id
-              
-              // Calculate user's involvement
-              let userInvolvement = { type: 'not-involved', amount: 0 }
-              if (expense.splitAmounts && expense.splitAmounts[currentUsername]) {
-                userInvolvement = { type: 'borrowed', amount: expense.splitAmounts[currentUsername] }
-              }
-              if (expense.isMultiplePayers) {
-                const userPayment = expense.paidBy.find(p => p.member === currentUsername)
-                if (userPayment) {
-                  const borrowed = expense.splitAmounts?.[currentUsername] || 0
-                  const net = userPayment.amount - borrowed
-                  if (net > 0) {
-                    userInvolvement = { type: 'lent', amount: net }
-                  } else if (net < 0) {
-                    userInvolvement = { type: 'borrowed', amount: Math.abs(net) }
-                  } else {
-                    userInvolvement = { type: 'even', amount: 0 }
-                  }
-                }
-              } else if (expense.paidBy === currentUsername) {
-                const borrowed = expense.splitAmounts?.[currentUsername] || 0
-                const net = expense.amount - borrowed
-                if (net > 0) {
-                  userInvolvement = { type: 'lent', amount: net }
-                } else if (net < 0) {
-                  userInvolvement = { type: 'borrowed', amount: Math.abs(net) }
-                } else {
-                  userInvolvement = { type: 'even', amount: 0 }
-                }
-              }
-              
-              return (
-                <div key={expense.id} className={`expense-item ${isExpanded ? 'expanded' : ''}`}>
-                  <div 
-                    className="expense-summary"
-                    onClick={() => !isEditing && toggleExpense(expense.id)}
-                  >
-                    <div className="expense-date">
-                      <div className="month">{month}</div>
-                      <div className="day">{day}</div>
-                    </div>
-                    <div className="expense-details">
-                      <h4>{expense.description}</h4>
-                      <p className="expense-info">
-                        {expense.isMultiplePayers ? (
-                          <>Paid by <strong>multiple people</strong> • {expense.currency || 'USD'} {expense.amount.toFixed(2)}</>
-                        ) : (
-                          <>Paid by <strong>{expense.paidBy === currentUsername ? 'You' : expense.paidBy}</strong> • {expense.currency || 'USD'} {expense.amount.toFixed(2)}</>
-                        )}
-                      </p>
-                      {!isExpanded && (
-                        <p className="expense-split">
-                          {expense.splitType && expense.splitType !== 'equally' && (
-                            <span className="split-type-badge">
-                              {expense.splitType === 'unequally' ? 'Unequal split' :
-                               expense.splitType === 'percentages' ? 'Percentage split' :
-                               expense.splitType === 'adjustment' ? 'Adjusted split' :
-                               expense.splitType === 'shares' ? 'Share-based split' : ''}
-                            </span>
-                          )}
-                          {splitInfo.length > 50 ? splitInfo.substring(0, 50) + '...' : splitInfo}
-                        </p>
-                      )}
-                    </div>
-                    <div className="expense-involvement">
-                      {userInvolvement.type === 'lent' && (
-                        <div className="involvement-badge lent">
-                          You lent ${userInvolvement.amount.toFixed(2)}
-                        </div>
-                      )}
-                      {userInvolvement.type === 'borrowed' && (
-                        <div className="involvement-badge borrowed">
-                          You borrowed ${userInvolvement.amount.toFixed(2)}
-                        </div>
-                      )}
-                      {userInvolvement.type === 'not-involved' && (
-                        <div className="involvement-badge not-involved">
-                          Not involved
-                        </div>
-                      )}
-                      {userInvolvement.type === 'even' && (
-                        <div className="involvement-badge even">
-                          Even
-                        </div>
-                      )}
-                    </div>
-                    <div className="expand-icon">
-                      {isExpanded ? '▼' : '▶'}
-                    </div>
-                  </div>
+          group.expenses.map((expense) => (
+            <TouchableOpacity
+              key={expense.id}
+              style={styles.expenseCard}
+              onPress={() => setExpandedExpense(expandedExpense === expense.id ? null : expense.id)}
+            >
+              <View style={styles.expenseHeader}>
+                <Text style={styles.expenseDescription}>{expense.description}</Text>
+                <Text style={styles.expenseAmount}>
+                  {formatCurrency(expense.amount, expense.currency)}
+                </Text>
+              </View>
+              <Text style={styles.expenseDetails}>
+                Paid by {expense.paidBy} on {new Date(expense.date).toLocaleDateString()}
+              </Text>
 
-                  {isExpanded && !isEditing && (
-                    <div className="expense-expanded">
-                      <div className="expanded-section">
-                        <h5>💰 Payment Details</h5>
-                        {expense.isMultiplePayers ? (
-                          <div className="detail-list">
-                            {expense.paidBy.map(payer => (
-                              <div key={payer.member} className="detail-item">
-                                <strong>{payer.member}</strong> paid ${payer.amount.toFixed(2)}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="detail-item">
-                            <strong>{expense.paidBy}</strong> paid ${expense.amount.toFixed(2)}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="expanded-section">
-                        <h5>📊 Split Details</h5>
-                        {expense.splitType && expense.splitType !== 'equally' && (
-                          <p className="split-type-info">
-                            <span className="split-type-badge">
-                              {expense.splitType === 'unequally' ? 'Unequal split' :
-                               expense.splitType === 'percentages' ? 'Percentage split' :
-                               expense.splitType === 'adjustment' ? 'Adjusted split' :
-                               expense.splitType === 'shares' ? 'Share-based split' : ''}
-                            </span>
-                          </p>
-                        )}
-                        <div className="detail-list">
-                          {expense.splitAmounts && Object.entries(expense.splitAmounts).map(([member, amt]) => (
-                            <div key={member} className="detail-item">
-                              <strong>{member}</strong> owes ${amt.toFixed(2)}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="expanded-section">
-                        <h5>📅 History</h5>
-                        <div className="detail-item">
-                          Created on {new Date(expense.date).toLocaleDateString()} at {new Date(expense.date).toLocaleTimeString()}
-                          {expense.createdBy && (
-                            <> by <strong>{expense.createdBy === currentUsername ? 'You' : expense.createdBy}</strong></>
-                          )}
-                        </div>
-                        {expense.modifiedDate && (
-                          <div className="detail-item">
-                            Last modified on {new Date(expense.modifiedDate).toLocaleDateString()} at {new Date(expense.modifiedDate).toLocaleTimeString()}
-                            {expense.modifiedBy && (
-                              <> by <strong>{expense.modifiedBy === currentUsername ? 'You' : expense.modifiedBy}</strong></>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="expense-actions">
-                        <button 
-                          className="secondary"
-                          onClick={() => {
-                            setEditingExpense(expense)
-                            setExpandedExpense(null)
-                          }}
-                        >
-                          ✏️ Edit
-                        </button>
-                        <button 
-                          className="danger"
-                          onClick={() => handleDeleteExpense(expense.id)}
-                        >
-                          🗑️ Delete
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {isEditing && (
-                    <div className="expense-edit-form">
-                      <h4>Edit Expense</h4>
-                      <ExpenseForm 
-                        members={group.members}
-                        currentUser={currentUser}
-                        onSubmit={handleEditExpense}
-                        initialData={expense}
-                      />
-                      <button 
-                        className="secondary"
-                        onClick={() => setEditingExpense(null)}
-                        style={{ marginTop: '1rem', width: '100%' }}
-                      >
-                        Cancel Edit
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+              {expandedExpense === expense.id && (
+                <View style={styles.expandedDetails}>
+                  <Text style={styles.detailsText}>
+                    Split between: {expense.splitBetween?.join(', ') || 'All members'}
+                  </Text>
+                  <View style={styles.expenseActions}>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDeleteExpense(expense.id)}
+                    >
+                      <Text style={styles.deleteButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))
         )}
-      </div>
-    </div>
-  )
+      </ScrollView>
+    </View>
+  );
 }
 
-export default ExpenseTracker
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  header: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  shareButton: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#2c3e50',
+  },
+  shareButtonText: {
+    color: '#2c3e50',
+    fontWeight: '500',
+  },
+  leaveButton: {
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  leaveButtonDisabled: {
+    backgroundColor: '#999',
+    opacity: 0.4,
+  },
+  leaveButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  actionButtonActive: {
+    backgroundColor: '#2c3e50',
+    borderColor: '#2c3e50',
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  calculatorContainer: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 8,
+  },
+  expensesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  expensesTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  addButton: {
+    backgroundColor: '#2c3e50',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  addButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+  },
+  formContainer: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 8,
+  },
+  expensesList: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  expenseCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  expenseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  expenseDescription: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c3e50',
+    flex: 1,
+  },
+  expenseAmount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
+  expenseDetails: {
+    fontSize: 13,
+    color: '#7f8c8d',
+  },
+  expandedDetails: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  detailsText: {
+    fontSize: 13,
+    color: '#7f8c8d',
+    marginBottom: 12,
+  },
+  expenseActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  deleteButton: {
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+  },
+  emptyState: {
+    padding: 48,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    color: '#7f8c8d',
+    fontSize: 15,
+    textAlign: 'center',
+  },
+});
+
+export default ExpenseTracker;

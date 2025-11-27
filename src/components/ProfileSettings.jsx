@@ -1,196 +1,165 @@
-import { useState } from 'react'
-import './ProfileSettings.css'
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Modal,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 
 function ProfileSettings({ user, onUpdate, onClose }) {
-  const [displayName, setDisplayName] = useState(user.displayName || user.username)
-  const [avatar, setAvatar] = useState(user.avatar || '')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [uploadingImage, setUploadingImage] = useState(false)
-  const [showAvatarMenu, setShowAvatarMenu] = useState(false)
-  const [avatarUrl, setAvatarUrl] = useState('')
+  const [displayName, setDisplayName] = useState(user.displayName || '');
+  const [avatar, setAvatar] = useState(user.avatar || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
-      return
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Image size must be less than 5MB')
-      return
-    }
-
-    setUploadingImage(true)
+  const handleSave = async () => {
+    setError('');
+    setLoading(true);
 
     try {
-      // Convert image to base64
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setAvatar(reader.result)
-        setUploadingImage(false)
-        setShowAvatarMenu(false)
-      }
-      reader.onerror = () => {
-        alert('Failed to read image file')
-        setUploadingImage(false)
-      }
-      reader.readAsDataURL(file)
-    } catch (error) {
-      console.error('Error uploading image:', error)
-      alert('Failed to upload image')
-      setUploadingImage(false)
+      await onUpdate(displayName, avatar);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to update profile');
+      setLoading(false);
     }
-  }
-
-  const handleUrlSubmit = () => {
-    if (avatarUrl.trim()) {
-      setAvatar(avatarUrl.trim())
-      setAvatarUrl('')
-      setShowAvatarMenu(false)
-    }
-  }
-
-  const handleRemoveAvatar = () => {
-    setAvatar('')
-    setShowAvatarMenu(false)
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    
-    try {
-      await onUpdate(displayName, avatar)
-      onClose()
-    } catch (error) {
-      console.error('Failed to update profile:', error)
-      alert('Failed to update profile')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+  };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <h3>⚙️ Profile Settings</h3>
-        
-        <form onSubmit={handleSubmit} className="profile-form">
-          <div className="profile-preview">
-            <div className="avatar-container" onClick={() => setShowAvatarMenu(!showAvatarMenu)}>
-              {avatar ? (
-                <img 
-                  src={avatar} 
-                  alt="Profile" 
-                  className="profile-avatar"
-                  onError={(e) => {
-                    e.target.style.display = 'none'
-                    e.target.nextSibling.style.display = 'flex'
-                  }}
-                />
-              ) : null}
-              <div 
-                className="profile-avatar-placeholder" 
-                style={{ display: avatar ? 'none' : 'flex' }}
-              >
-                👤
-              </div>
-              <div className="avatar-overlay">
-                <span>📷</span>
-              </div>
-            </div>
+    <Modal
+      visible={true}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.overlay}
+      >
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Profile Settings</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
 
-            {showAvatarMenu && (
-              <div className="avatar-menu">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  id="avatar-upload-hidden"
-                  style={{ display: 'none' }}
-                  disabled={uploadingImage}
-                />
-                <button
-                  type="button"
-                  className="avatar-menu-item"
-                  onClick={() => document.getElementById('avatar-upload-hidden').click()}
-                  disabled={uploadingImage}
-                >
-                  📤 Upload photo
-                </button>
-                <button
-                  type="button"
-                  className="avatar-menu-item"
-                  onClick={() => {
-                    const url = prompt('Enter image URL:')
-                    if (url) {
-                      setAvatar(url.trim())
-                      setShowAvatarMenu(false)
-                    }
-                  }}
-                >
-                  🔗 Add photo URL
-                </button>
-                {avatar && (
-                  <button
-                    type="button"
-                    className="avatar-menu-item danger"
-                    onClick={handleRemoveAvatar}
-                  >
-                    🗑️ Remove photo
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="form-group">
-            <label>Display Name:</label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+          <View style={styles.form}>
+            <Text style={styles.label}>Display Name</Text>
+            <TextInput
+              style={styles.input}
               placeholder="Your display name"
-              maxLength={50}
+              value={displayName}
+              onChangeText={setDisplayName}
             />
-          </div>
 
-          <div className="form-group">
-            <label>Username:</label>
-            <input
-              type="text"
-              value={user.username}
-              disabled
-              className="disabled-input"
+            <Text style={styles.label}>Avatar URL (optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="https://example.com/avatar.jpg"
+              value={avatar}
+              onChangeText={setAvatar}
+              autoCapitalize="none"
             />
-            <p className="help-text">Username cannot be changed</p>
-          </div>
 
-          <div className="modal-actions">
-            <button
-              type="button"
-              className="secondary"
-              onClick={onClose}
-              disabled={isSubmitting}
+            {avatar ? (
+              <Text style={styles.hint}>Preview: {avatar.substring(0, 40)}...</Text>
+            ) : null}
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={loading}
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
+              <Text style={styles.saveButtonText}>
+                {loading ? 'Saving...' : 'Save Changes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 }
 
-export default ProfileSettings
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  closeButton: {
+    fontSize: 24,
+    color: '#7f8c8d',
+  },
+  form: {
+    padding: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  input: {
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  hint: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginTop: 4,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    marginTop: 12,
+  },
+  saveButton: {
+    backgroundColor: '#2c3e50',
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+});
+
+export default ProfileSettings;
