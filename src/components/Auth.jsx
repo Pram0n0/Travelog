@@ -1,115 +1,221 @@
-import { useState } from 'react'
-import { authAPI } from '../api/index.js'
-import './Auth.css'
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from 'react-native';
+import { authAPI } from '../api/index.js';
 
 function Auth({ onLogin }) {
-  const [isSignUp, setIsSignUp] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [username, setUsername] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+  const handleSubmit = async () => {
+    setError('');
+    setLoading(true);
 
     try {
       if (isSignUp) {
-        // Sign up
         if (!username || !email || !password) {
-          setError('All fields are required')
-          setLoading(false)
-          return
+          setError('All fields are required');
+          setLoading(false);
+          return;
         }
 
-        const response = await authAPI.signup(username, email, password)
-        onLogin(response.user)
+        const response = await authAPI.signup(username, email, password);
+        onLogin(response.user);
       } else {
-        // Sign in
         if (!email || !password) {
-          setError('Email and password are required')
-          setLoading(false)
-          return
+          setError('Email and password are required');
+          setLoading(false);
+          return;
         }
 
-        const response = await authAPI.login(email, password)
-        onLogin(response.user)
+        const response = await authAPI.login(email, password);
+        onLogin(response.user);
       }
     } catch (err) {
-      setError(err.message || 'Authentication failed')
-      setLoading(false)
+      setError(err.message || 'Authentication failed');
+      setLoading(false);
     }
-  }
-
-  const handleGoogleLogin = () => {
-    authAPI.googleLogin()
-  }
+  };
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h1>💰 Travelog</h1>
-        <p className="auth-subtitle">Track and split shared expenses with ease</p>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={styles.authCard}>
+          <Text style={styles.title}>💰 Travelog</Text>
+          <Text style={styles.subtitle}>Track and split shared expenses with ease</Text>
 
-        <div className="auth-tabs">
-          <button 
-            className={!isSignUp ? 'active' : ''}
-            onClick={() => { setIsSignUp(false); setError(''); }}
-          >
-            Sign In
-          </button>
-          <button 
-            className={isSignUp ? 'active' : ''}
-            onClick={() => { setIsSignUp(true); setError(''); }}
-          >
-            Sign Up
-          </button>
-        </div>
+          <View style={styles.tabs}>
+            <TouchableOpacity
+              style={[styles.tab, !isSignUp && styles.activeTab]}
+              onPress={() => {
+                setIsSignUp(false);
+                setError('');
+              }}
+            >
+              <Text style={[styles.tabText, !isSignUp && styles.activeTabText]}>
+                Sign In
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, isSignUp && styles.activeTab]}
+              onPress={() => {
+                setIsSignUp(true);
+                setError('');
+              }}
+            >
+              <Text style={[styles.tabText, isSignUp && styles.activeTabText]}>
+                Sign Up
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          {isSignUp && (
-            <input
-              type="text"
-              placeholder="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
+          <View style={styles.form}>
+            {isSignUp && (
+              <TextInput
+                style={styles.input}
+                placeholder="Username"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+              />
+            )}
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
             />
-          )}
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
 
-          {error && <p className="error-message">{error}</p>}
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          <button type="submit" className="auth-button" disabled={loading}>
-            {loading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
-          </button>
-        </form>
-
-        <div className="divider">
-          <span>OR</span>
-        </div>
-
-        <button onClick={handleGoogleLogin} className="google-button" disabled={loading}>
-          <span>🔐</span> Continue with Google
-        </button>
-      </div>
-    </div>
-  )
+            <TouchableOpacity
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleSubmit}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
 }
 
-export default Auth
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  authCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  tabs: {
+    flexDirection: 'row',
+    marginBottom: 24,
+    borderRadius: 8,
+    backgroundColor: '#ecf0f1',
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  activeTab: {
+    backgroundColor: '#2c3e50',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#fff',
+  },
+  form: {
+    gap: 16,
+  },
+  input: {
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  button: {
+    backgroundColor: '#2c3e50',
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+});
+
+export default Auth;

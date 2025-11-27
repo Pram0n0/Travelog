@@ -1,25 +1,27 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+// For React Native - replace with your backend URL
+// Use your computer's IP address when testing on a physical device
+// or 10.0.2.2 for Android emulator or localhost for iOS simulator
+const API_URL = 'http://localhost:5000/api'; // Change this to your backend URL
 
 // Helper function for API calls
 const apiCall = async (endpoint, options = {}) => {
   const config = {
-    credentials: 'include', // Important for cookies/sessions
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,
     },
     ...options,
-  }
+  };
 
-  const response = await fetch(`${API_URL}${endpoint}`, config)
-  const data = await response.json()
+  const response = await fetch(`${API_URL}${endpoint}`, config);
+  const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || 'Something went wrong')
+    throw new Error(data.error || 'Something went wrong');
   }
 
-  return data
-}
+  return data;
+};
 
 // Authentication API
 export const authAPI = {
