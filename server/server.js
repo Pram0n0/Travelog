@@ -28,6 +28,9 @@ mongoose.connect(process.env.MONGODB_URI, {
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
+// Trust proxy - needed for secure cookies behind reverse proxy (Render)
+app.set('trust proxy', 1)
+
 // CORS Configuration
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
@@ -41,6 +44,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
+  proxy: true, // Trust the reverse proxy
   store: MongoStore.create({
     mongoUrl: process.env.MONGODB_URI,
     touchAfter: 24 * 3600 // Update session once per 24 hours unless changed
