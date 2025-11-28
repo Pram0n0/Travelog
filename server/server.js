@@ -14,9 +14,15 @@ const app = express()
 const PORT = process.env.PORT || 5000
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+})
   .then(() => console.log('✅ Connected to MongoDB'))
-  .catch((err) => console.error('❌ MongoDB connection error:', err))
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err)
+    console.error('Connection string:', process.env.MONGODB_URI?.replace(/:[^:@]+@/, ':****@'))
+  })
 
 // Middleware
 app.use(express.json())

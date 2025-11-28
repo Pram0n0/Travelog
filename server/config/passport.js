@@ -90,11 +90,18 @@ console.log('CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET ? 'SET' : 'NOT SE
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   console.log('✅ Registering Google OAuth strategy')
+  
+  // Construct full callback URL based on environment
+  const baseUrl = process.env.NODE_ENV === 'production' 
+    ? 'https://travelog-ra88.onrender.com'
+    : 'http://localhost:5000'
+  const callbackURL = `${baseUrl}/api/auth/google/callback`
+  
   passport.use(new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: '/api/auth/google/callback',
+      callbackURL: callbackURL,
       passReqToCallback: true
     },
     async (req, accessToken, refreshToken, profile, done) => {
