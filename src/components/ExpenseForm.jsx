@@ -1,5 +1,45 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './ExpenseForm.css'
+
+// Comprehensive currency list
+const CURRENCIES = [
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+  { code: 'CHF', symbol: 'Fr', name: 'Swiss Franc' },
+  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+  { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar' },
+  { code: 'NZD', symbol: 'NZ$', name: 'New Zealand Dollar' },
+  { code: 'SEK', symbol: 'kr', name: 'Swedish Krona' },
+  { code: 'NOK', symbol: 'kr', name: 'Norwegian Krone' },
+  { code: 'DKK', symbol: 'kr', name: 'Danish Krone' },
+  { code: 'MXN', symbol: '$', name: 'Mexican Peso' },
+  { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
+  { code: 'RUB', symbol: '₽', name: 'Russian Ruble' },
+  { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
+  { code: 'TRY', symbol: '₺', name: 'Turkish Lira' },
+  { code: 'THB', symbol: '฿', name: 'Thai Baht' },
+  { code: 'PLN', symbol: 'zł', name: 'Polish Złoty' },
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
+  { code: 'SAR', symbol: '﷼', name: 'Saudi Riyal' },
+  { code: 'MYR', symbol: 'RM', name: 'Malaysian Ringgit' },
+  { code: 'IDR', symbol: 'Rp', name: 'Indonesian Rupiah' },
+  { code: 'PHP', symbol: '₱', name: 'Philippine Peso' },
+  { code: 'VND', symbol: '₫', name: 'Vietnamese Dong' },
+  { code: 'EGP', symbol: '£', name: 'Egyptian Pound' },
+  { code: 'ILS', symbol: '₪', name: 'Israeli Shekel' },
+  { code: 'CZK', symbol: 'Kč', name: 'Czech Koruna' },
+  { code: 'HUF', symbol: 'Ft', name: 'Hungarian Forint' },
+  { code: 'ARS', symbol: '$', name: 'Argentine Peso' },
+  { code: 'CLP', symbol: '$', name: 'Chilean Peso' },
+  { code: 'COP', symbol: '$', name: 'Colombian Peso' }
+]
 
 function ExpenseForm({ members, onSubmit, initialData = null, currentUser }) {
   const [description, setDescription] = useState(initialData?.description || '')
@@ -42,6 +82,9 @@ function ExpenseForm({ members, onSubmit, initialData = null, currentUser }) {
   const [percentages, setPercentages] = useState(members.reduce((acc, member) => ({ ...acc, [member]: '' }), {}))
   const [adjustments, setAdjustments] = useState(members.reduce((acc, member) => ({ ...acc, [member]: '' }), {}))
   const [shares, setShares] = useState(members.reduce((acc, member) => ({ ...acc, [member]: '' }), {}))
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [validationError, setValidationError] = useState('')
+  const descriptionRef = useRef(null)
 
   const calculateSplitAmounts = () => {
     const totalAmount = isMultiplePayers 

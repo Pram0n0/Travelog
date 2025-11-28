@@ -104,4 +104,37 @@ export const groupsAPI = {
       method: 'POST',
     })
   },
+
+  createPayment: async (groupId, paymentData) => {
+    return apiCall(`/groups/${groupId}/payments`, {
+      method: 'POST',
+      body: JSON.stringify(paymentData),
+    })
+  },
+
+  confirmPayment: async (groupId, paymentId, action) => {
+    return apiCall(`/groups/${groupId}/payments/${paymentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ action }),
+    })
+  },
+
+  sendPaymentReminder: async (groupId, paymentId) => {
+    return apiCall(`/groups/${groupId}/payments/${paymentId}/remind`, {
+      method: 'POST',
+    })
+  },
+
+  sendPaymentRequest: async (groupId, requestData) => {
+    return apiCall(`/groups/${groupId}/payment-requests`, {
+      method: 'POST',
+      body: JSON.stringify(requestData),
+    })
+  },
+
+  dismissPaymentRequest: async (groupId, requestId) => {
+    return apiCall(`/groups/${groupId}/payment-requests/${requestId}`, {
+      method: 'DELETE',
+    })
+  },
 }

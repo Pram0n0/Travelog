@@ -9,6 +9,7 @@ function Auth({ onLogin }) {
   const [username, setUsername] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -16,34 +17,52 @@ function Auth({ onLogin }) {
     setLoading(true)
 
     try {
+      // Trim inputs
+      const trimmedEmail = email.trim()
+      const trimmedPassword = password.trim()
+      const trimmedUsername = username.trim()
+
       if (isSignUp) {
-        // Sign up
-        if (!username || !email || !password) {
+        // Sign up validation
+        if (!trimmedUsername || !trimmedEmail || !trimmedPassword) {
           setError('All fields are required')
           setLoading(false)
           return
         }
 
-        const response = await authAPI.signup(username, email, password)
+        if (trimmedUsername.length < 3) {
+          setError('Username must be at least 3 characters')
+          setLoading(false)
+          return
+        }
+
+        if (trimmedPassword.length < 6) {
+          setError('Password must be at least 6 characters')
+          setLoading(false)
+          return
+        }
+
+        const response = await authAPI.signup(trimmedUsername, trimmedEmail, trimmedPassword)
         onLogin(response.user)
       } else {
-        // Sign in
-        if (!email || !password) {
+        // Sign in validation
+        if (!trimmedEmail || !trimmedPassword) {
           setError('Email and password are required')
           setLoading(false)
           return
         }
 
-        const response = await authAPI.login(email, password)
+        const response = await authAPI.login(trimmedEmail, trimmedPassword)
         onLogin(response.user)
       }
     } catch (err) {
-      setError(err.message || 'Authentication failed')
+      setError(err.message || 'Authentication failed. Please try again.')
       setLoading(false)
     }
   }
 
   const handleGoogleLogin = () => {
+    setIsGoogleLoading(true)
     authAPI.googleLogin()
   }
 
@@ -57,12 +76,14 @@ function Auth({ onLogin }) {
           <button 
             className={!isSignUp ? 'active' : ''}
             onClick={() => { setIsSignUp(false); setError(''); }}
+            disabled={loading || isGoogleLoading}
           >
             Sign In
           </button>
           <button 
             className={isSignUp ? 'active' : ''}
             onClick={() => { setIsSignUp(true); setError(''); }}
+            disabled={loading || isGoogleLoading}
           >
             Sign Up
           </button>
@@ -95,18 +116,30 @@ function Auth({ onLogin }) {
 
           {error && <p className="error-message">{error}</p>}
 
-          <button type="submit" className="auth-button" disabled={loading}>
-            {loading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
+          <button type="submit" className="auth-button" disabled={loading || isGoogleLoading}>
+            {loading ? (
+              <span>⏳ Please wait...</span>
+            ) : (
+              isSignUp ? 'Create Account' : 'Sign In'
+            )}
           </button>
         </form>
 
-        <div className="divider">
-          <span>OR</span>
-        </div>
+        {!isSignUp && (
+          <>
+            <div className="divider">
+              <span>OR</span>
+            </div>
 
-        <button onClick={handleGoogleLogin} className="google-button" disabled={loading}>
-          <span>🔐</span> Continue with Google
-        </button>
+            <button onClick={handleGoogleLogin} className="google-button" disabled={loading || isGoogleLoading}>
+              {isGoogleLoading ? (
+                <span>⏳ Redirecting...</span>
+              ) : (
+                <><span>🔐</span> Continue with Google</>
+              )}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

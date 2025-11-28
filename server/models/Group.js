@@ -19,7 +19,58 @@ const expenseSchema = new mongoose.Schema({
   },
   createdBy: String,
   modifiedDate: Date,
-  modifiedBy: String
+  modifiedBy: String,
+  // Mark if this is a settlement payment
+  isSettlement: {
+    type: Boolean,
+    default: false
+  },
+  settledPaymentId: String // Reference to the payment that created this settlement
+})
+
+const paymentSchema = new mongoose.Schema({
+  id: String,
+  from: {
+    type: String,
+    required: true
+  },
+  to: {
+    type: String,
+    required: true
+  },
+  amount: {
+    type: Number,
+    required: true
+  },
+  currency: {
+    type: String,
+    required: true,
+    default: 'USD'
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'confirmed', 'rejected'],
+    default: 'pending'
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  confirmedAt: Date,
+  rejectedAt: Date,
+  lastReminderSent: Date // Track when last reminder was sent (1 hour cooldown)
+})
+
+const paymentRequestSchema = new mongoose.Schema({
+  id: String,
+  from: String, // Person requesting payment
+  to: String, // Person being asked to pay
+  amount: Number,
+  currency: String,
+  lastSent: {
+    type: Date,
+    default: Date.now
+  }
 })
 
 const groupSchema = new mongoose.Schema({
@@ -43,6 +94,8 @@ const groupSchema = new mongoose.Schema({
     default: ['USD']
   },
   expenses: [expenseSchema],
+  payments: [paymentSchema], // Track pending/confirmed payments
+  paymentRequests: [paymentRequestSchema], // Track payment reminders/requests
   createdBy: {
     type: String,
     required: true

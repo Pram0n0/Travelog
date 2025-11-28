@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react'
 import './ExpenseTracker.css'
 import ExpenseForm from './ExpenseForm'
 import BalanceCalculator from './BalanceCalculator'
+import { groupsAPI } from '../api'
 
-function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup }) {
+function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup, onGroupUpdate }) {
   const [showForm, setShowForm] = useState(false)
   const [expandedExpense, setExpandedExpense] = useState(null)
   const [editingExpense, setEditingExpense] = useState(null)
@@ -13,6 +14,11 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
   const [showConvertDialog, setShowConvertDialog] = useState(false)
   const [targetCurrency, setTargetCurrency] = useState('USD')
   const [isConverting, setIsConverting] = useState(false)
+  const [showBundlePrompt, setShowBundlePrompt] = useState(false)
+  const [relatedExpenses, setRelatedExpenses] = useState([])
+  const [newExpenseData, setNewExpenseData] = useState(null)
+  const [isBundling, setIsBundling] = useState(false)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
   // Check if current user has any outstanding balances (owes OR is owed)
   const userHasOutstandingBalances = useMemo(() => {
@@ -64,8 +70,142 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
   }
 
   const handleAddExpense = (expense) => {
-    onAddExpense(expense)
+    // Check for recent similar expenses (within 30 minutes, same currency)
+    const now = new Date()
+    const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000)
+    
+    const recentSimilarExpenses = group.expenses.filter(e => {
+      const expenseDate = new Date(e.date)
+      return (
+        expenseDate >= thirtyMinutesAgo &&
+        e.currency === expense.currency &&
+        e.id !== expense.id
+      )
+    })
+
+    // If found related expenses, show bundle prompt
+    if (recentSimilarExpenses.length > 0) {
+      setRelatedExpenses(recentSimilarExpenses)
+      setNewExpenseData(expense)
+      setShowBundlePrompt(true)
+    } else {
+      // No related expenses, add normally
+      onAddExpense(expense)
+      setShowForm(false)
+    }
+  }
+
+  const handleBundleDecision = async (shouldBundle) => {
+    setIsBundling(true)
+    
+    if (shouldBundle && relatedExpenses.length > 0) {
+      // Bundle: combine amounts and merge descriptions
+      const totalAmount = relatedExpenses.reduce((sum, e) => sum + e.amount, 0) + newExpenseData.amount
+      const descriptions = [...relatedExpenses.map(e => e.description), newExpenseData.description]
+      const bundledDescription = `Bundled: ${descriptions.join(' + ')}`
+
+      // STEP 1: Convert all expenses to absolute values (unequally)
+      // This handles mixed split types and different participants
+      const allExpenses = [...relatedExpenses, newExpenseData]
+      const absoluteSplits = {}
+      
+      allExpenses.forEach(expense => {
+        if (expense.splitAmounts) {
+          // Add each person's share to the running total
+          Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
+            if (!absoluteSplits[member]) {
+              absoluteSplits[member] = 0
+            }
+            absoluteSplits[member] += amount
+          })
+        }
+      })
+
+      // STEP 2: Check if we can convert back to "equally"
+      // Only if all participants have the exact same amount
+      const participants = Object.keys(absoluteSplits)
+      const amounts = Object.values(absoluteSplits)
+      const allEqual = amounts.length > 0 && amounts.every(amt => Math.abs(amt - amounts[0]) < 0.01)
+      
+      let bundledSplitType = 'unequally'
+      let bundledSplitAmounts = absoluteSplits
+      
+      if (allEqual && participants.length > 0) {
+        // All participants owe the same amount - convert to "equally"
+        bundledSplitType = 'equally'
+        const equalShare = totalAmount / participants.length
+        bundledSplitAmounts = {}
+        participants.forEach(member => {
+          bundledSplitAmounts[member] = equalShare
+        })
+      }
+
+      try {
+        // Delete the old expenses first (wait for all deletions to complete)
+        await Promise.all(relatedExpenses.map(e => {
+          if (e.id) {
+            return onDeleteExpense(e.id)
+          }
+          return Promise.resolve()
+        }))
+
+        // Then add the bundled expense with proper split amounts
+        await onAddExpense({
+          ...newExpenseData,
+          description: bundledDescription,
+          amount: totalAmount,
+          splitType: bundledSplitType,
+          splitAmounts: bundledSplitAmounts,
+          splitBetween: participants // Update the participant list
+        })
+      } catch (error) {
+        console.error('Error bundling expenses:', error)
+        alert('Failed to bundle expenses. Please try again.')
+        // If bundling fails, just add the new expense normally
+        await onAddExpense(newExpenseData)
+      }
+    } else {
+      // Don't bundle, add as separate expense
+      await onAddExpense(newExpenseData)
+    }
+    
+    // Reset state
+    setIsBundling(false)
+    setShowBundlePrompt(false)
+    setRelatedExpenses([])
+    setNewExpenseData(null)
     setShowForm(false)
+  }
+
+  const handlePaymentAction = async (action, data) => {
+    if (isProcessingPayment) return
+    
+    setIsProcessingPayment(true)
+    
+    try {
+      if (action === 'create') {
+        // Create a new payment
+        const updatedGroup = await groupsAPI.createPayment(group._id, {
+          to: data.to,
+          amount: data.amount,
+          currency: data.currency
+        })
+        if (onGroupUpdate) {
+          onGroupUpdate(updatedGroup)
+        }
+      } else if (action === 'confirm' || action === 'reject') {
+        // Confirm or reject a payment
+        const updatedGroup = await groupsAPI.confirmPayment(group._id, data, action)
+        if (onGroupUpdate) {
+          onGroupUpdate(updatedGroup)
+        }
+      }
+    } catch (error) {
+      console.error('Error processing payment:', error)
+      alert(`Failed to ${action} payment. Please try again.`)
+    } finally {
+      setIsProcessingPayment(false)
+    }
   }
 
   const handleEditExpense = (expense) => {
@@ -366,12 +506,82 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
         </div>
       )}
 
+      {showBundlePrompt && (
+        <div className="modal-overlay" onClick={() => setShowBundlePrompt(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>📦 Bundle Related Expenses?</h3>
+            <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+              Found {relatedExpenses.length} recent expense{relatedExpenses.length > 1 ? 's' : ''} in the same currency within the last 30 minutes.
+            </p>
+            
+            <div style={{ 
+              background: '#f8f9fa', 
+              padding: '1rem', 
+              borderRadius: '6px', 
+              marginBottom: '1rem',
+              maxHeight: '200px',
+              overflowY: 'auto'
+            }}>
+              <strong>Related expenses:</strong>
+              <ul style={{ margin: '0.5rem 0 0 0', paddingLeft: '1.5rem' }}>
+                {relatedExpenses.map(exp => (
+                  <li key={exp.id} style={{ marginBottom: '0.25rem' }}>
+                    {exp.description} - {exp.currency} {exp.amount.toFixed(2)}
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '0.5rem' }}>
+                      ({new Date(exp.date).toLocaleTimeString()})
+                    </span>
+                  </li>
+                ))}
+                <li style={{ fontWeight: 'bold', marginTop: '0.5rem' }}>
+                  {newExpenseData?.description} - {newExpenseData?.currency} {newExpenseData?.amount.toFixed(2)} (new)
+                </li>
+              </ul>
+              <div style={{ 
+                marginTop: '0.75rem', 
+                paddingTop: '0.75rem', 
+                borderTop: '1px solid #dee2e6',
+                fontWeight: 'bold'
+              }}>
+                Total if bundled: {newExpenseData?.currency} {(
+                  relatedExpenses.reduce((sum, e) => sum + e.amount, 0) + (newExpenseData?.amount || 0)
+                ).toFixed(2)}
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              💡 Bundling is useful for multiple purchases from the same location (markets, tours, airport).
+            </p>
+
+            <div className="modal-actions">
+              <button 
+                className="secondary" 
+                onClick={() => handleBundleDecision(false)}
+                disabled={isBundling}
+              >
+                Keep Separate
+              </button>
+              <button 
+                onClick={() => handleBundleDecision(true)}
+                style={{ background: '#28a745' }}
+                disabled={isBundling}
+              >
+                {isBundling ? '⏳ Bundling...' : '📦 Bundle Together'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSettleUp && (
         <BalanceCalculator 
           expenses={group.expenses}
           members={group.members}
           currentUser={currentUser}
           showSettlements={true}
+          groupId={group._id}
+          onPaymentAction={handlePaymentAction}
+          pendingPayments={group.payments || []}
+          paymentRequests={group.paymentRequests || []}
         />
       )}
 
@@ -404,6 +614,10 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
         members={group.members}
         currentUser={currentUser}
         showSettlements={false}
+        groupId={group._id}
+        onPaymentAction={handlePaymentAction}
+        pendingPayments={group.payments || []}
+        paymentRequests={group.paymentRequests || []}
       />
 
       <div className="add-expense-section">

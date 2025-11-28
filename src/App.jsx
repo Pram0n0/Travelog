@@ -40,6 +40,17 @@ function App() {
     }
   }, [currentUser])
 
+  // Auto-refresh groups every 5 seconds when user is logged in
+  useEffect(() => {
+    if (!currentUser) return
+
+    const interval = setInterval(() => {
+      fetchGroups()
+    }, 5000) // Poll every 5 seconds
+
+    return () => clearInterval(interval)
+  }, [currentUser])
+
   // Handle pending join after groups are loaded
   useEffect(() => {
     if (currentUser && groupsLoaded) {
@@ -192,6 +203,10 @@ function App() {
     }
   }
 
+  const updateGroup = (updatedGroup) => {
+    setGroups(prevGroups => prevGroups.map(g => g._id === updatedGroup._id ? updatedGroup : g))
+  }
+
   if (loading) {
     return (
       <div className="loading-screen">
@@ -290,6 +305,7 @@ function App() {
                 onDeleteExpense={deleteExpense}
                 onEditExpense={editExpense}
                 onLeaveGroup={leaveGroup}
+                onGroupUpdate={updateGroup}
               />
             } 
           />
@@ -319,7 +335,7 @@ function AuthWithRedirect({ onLogin, code }) {
 }
 
 // Component to handle individual group pages
-function GroupPage({ groups, currentUser, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup }) {
+function GroupPage({ groups, currentUser, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup, onGroupUpdate }) {
   const { groupSlug } = useParams()
   const navigate = useNavigate()
   
@@ -351,6 +367,7 @@ function GroupPage({ groups, currentUser, onAddExpense, onDeleteExpense, onEditE
       onDeleteExpense={(expenseId) => onDeleteExpense(group._id, expenseId)}
       onEditExpense={(expenseId, expense) => onEditExpense(group._id, expenseId, expense)}
       onLeaveGroup={() => onLeaveGroup(group._id)}
+      onGroupUpdate={onGroupUpdate}
     />
   )
 }
