@@ -86,12 +86,19 @@ router.get('/google', (req, res, next) => {
 // Google OAuth callback
 router.get('/google/callback', (req, res, next) => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    return res.redirect(`${process.env.CLIENT_URL}?error=oauth_not_configured`)
+    return res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}?error=oauth_not_configured`)
   }
-  passport.authenticate('google', { failureRedirect: `${process.env.CLIENT_URL}/login` })(req, res, next)
-}, (req, res) => {
-  // Successful authentication, redirect to frontend
-  res.redirect(`${process.env.CLIENT_URL}?auth=success`)
+  passport.authenticate('google', { 
+    failureRedirect: `${process.env.CLIENT_URL || 'http://localhost:5173'}/login`,
+    failureMessage: true 
+  })(req, res, (err) => {
+    if (err) {
+      console.error('Google OAuth callback error:', err)
+      return res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}?error=auth_failed`)
+    }
+    // Successful authentication, redirect to frontend
+    res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}?auth=success`)
+  })
 })
 
 // Logout
