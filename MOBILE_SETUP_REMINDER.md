@@ -19,7 +19,7 @@
    ```powershell
    npm start
    ```
-   Should show QR code at: `exp://192.168.1.9:8081`
+   Should show QR code at: `exp://192.168.1.4:8081`
 
 ## 📱 Testing on Your Phone
 
@@ -31,8 +31,8 @@
 ## 🔑 Important Configuration
 
 ### API URL (src/api/index.js)
-- Current: `http://192.168.1.5:5000/api`
-- Change `192.168.1.5` to your computer's IP if it changes
+- Current: `http://192.168.1.4:5000/api`
+- Change `192.168.1.4` to your computer's IP if it changes
 - Find your IP: `ipconfig` (look for IPv4 Address)
 
 ### Required Packages (Already Installed)
@@ -53,6 +53,31 @@ npm run dev
 ```
 
 ## 🐛 Common Issues & Fixes
+
+### "Something went wrong" error in Expo Go
+1. **Clear Metro bundler cache:**
+   ```powershell
+   npx expo start --clear
+   ```
+
+2. **Check both servers are running:**
+   ```powershell
+   Get-Process node
+   ```
+   Should see 2 Node processes (backend + Expo)
+
+3. **Verify network connection:**
+   - Phone and computer on same WiFi
+   - Try accessing `http://192.168.1.4:5000` from phone browser
+   - If it doesn't load, IP may have changed
+
+4. **Reload in Expo Go:**
+   - Shake phone → Tap "Reload"
+   - Or close and re-scan QR code
+
+5. **Check for errors in terminal:**
+   - Look at the Expo server terminal for red error messages
+   - Check backend terminal for connection issues
 
 ### "Cannot find module promise/setimmediate/es6-extensions"
 ```powershell
