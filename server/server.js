@@ -28,7 +28,7 @@ const allowedOrigins = [
   'http://localhost:8081',
   'http://localhost:8083',
   'exp://localhost:8081',
-  'exp://192.168.1.9:8081'  // For Expo mobile
+  'exp://192.168.1.4:8081'  // For Expo mobile
 ];
 
 app.use(cors({

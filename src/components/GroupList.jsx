@@ -8,6 +8,8 @@ import {
   StyleSheet,
   Alert,
   Platform,
+  ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
@@ -17,6 +19,8 @@ function GroupList({ groups, currentUser, navigation, onAddGroup, onJoinGroup, o
   const [groupName, setGroupName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
 
   const checkUserBalances = (group) => {
     const currencies = [...new Set(group.expenses.map(e => e.currency || 'USD'))];
@@ -67,21 +71,37 @@ function GroupList({ groups, currentUser, navigation, onAddGroup, onJoinGroup, o
 
   const handleSubmit = async () => {
     if (groupName.trim()) {
-      await onAddGroup(groupName);
-      setGroupName('');
-      setShowForm(false);
+      Keyboard.dismiss();
+      setIsCreating(true);
+      try {
+        await onAddGroup(groupName);
+        setGroupName('');
+        setShowForm(false);
+      } catch (error) {
+        Alert.alert('Error', 'Failed to create group. Please try again.');
+      } finally {
+        setIsCreating(false);
+      }
     }
   };
 
   const handleJoinSubmit = async () => {
     setJoinError('');
     if (joinCode.trim()) {
-      const success = await onJoinGroup(joinCode);
-      if (success) {
-        setJoinCode('');
-        setShowJoinForm(false);
-      } else {
-        setJoinError('Invalid code or you are already in this group');
+      Keyboard.dismiss();
+      setIsJoining(true);
+      try {
+        const success = await onJoinGroup(joinCode);
+        if (success) {
+          setJoinCode('');
+          setShowJoinForm(false);
+        } else {
+          setJoinError('Invalid code or you are already in this group');
+        }
+      } catch (error) {
+        setJoinError('Failed to join group. Please try again.');
+      } finally {
+        setIsJoining(false);
       }
     }
   };
@@ -165,8 +185,16 @@ function GroupList({ groups, currentUser, navigation, onAddGroup, onJoinGroup, o
             autoCapitalize="characters"
           />
           {joinError ? <Text style={styles.errorText}>{joinError}</Text> : null}
-          <TouchableOpacity style={styles.submitButton} onPress={handleJoinSubmit}>
-            <Text style={styles.submitButtonText}>Join Group</Text>
+          <TouchableOpacity 
+            style={[styles.submitButton, isJoining && styles.submitButtonDisabled]} 
+            onPress={handleJoinSubmit}
+            disabled={isJoining}
+          >
+            {isJoining ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitButtonText}>Join Group</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -183,8 +211,16 @@ function GroupList({ groups, currentUser, navigation, onAddGroup, onJoinGroup, o
           <Text style={styles.helperText}>
             You will be added as the first member. Share the group code with others to invite them.
           </Text>
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <Text style={styles.submitButtonText}>Create Group</Text>
+          <TouchableOpacity 
+            style={[styles.submitButton, isCreating && styles.submitButtonDisabled]} 
+            onPress={handleSubmit}
+            disabled={isCreating}
+          >
+            {isCreating ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitButtonText}>Create Group</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -284,6 +320,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#9ca3af',
+    opacity: 0.7,
   },
   submitButtonText: {
     color: '#fff',

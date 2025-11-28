@@ -8,6 +8,9 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Keyboard,
+  TouchableWithoutFeedback,
+  ActivityIndicator,
 } from 'react-native';
 
 const CURRENCIES = [
@@ -95,6 +98,7 @@ function ExpenseForm({ members, currentUser, onSubmit, onCancel, initialExpense 
   const [adjustments, setAdjustments] = useState(members.reduce((acc, member) => ({ ...acc, [member]: '' }), {}));
   const [shares, setShares] = useState(members.reduce((acc, member) => ({ ...acc, [member]: '' }), {}));
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (initialExpense) {
@@ -168,47 +172,90 @@ function ExpenseForm({ members, currentUser, onSubmit, onCancel, initialExpense 
     return splitData;
   };
 
-  const handleSubmit = () => {
-    const splitAmounts = calculateSplitAmounts();
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+    
+    Keyboard.dismiss();
+    setIsSubmitting(true);
 
-    if (isMultiplePayers) {
-      const payers = Object.entries(payerAmounts)
-        .filter(([_, amt]) => amt && parseFloat(amt) > 0)
-        .map(([member, amt]) => ({ member, amount: parseFloat(amt) }));
+    try {
+      const splitAmounts = calculateSplitAmounts();
 
-      if (payers.length === 0 || Object.keys(splitAmounts).length === 0) {
-        Alert.alert('Error', 'Please add at least one payer and one split amount');
-        return;
+      if (isMultiplePayers) {
+        const payers = Object.entries(payerAmounts)
+          .filter(([_, amt]) => amt && parseFloat(amt) > 0)
+          .map(([member, amt]) => ({ member, amount: parseFloat(amt) }));
+
+        if (payers.length === 0) {
+          Alert.alert('Missing Information', 'Please add at least one payer with an amount');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (Object.keys(splitAmounts).length === 0) {
+          Alert.alert('Missing Information', 'Please select at least one person to split the expense');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!description.trim()) {
+          Alert.alert('Missing Information', 'Please enter a description for this expense');
+          setIsSubmitting(false);
+          return;
+        }
+
+        const totalPaid = payers.reduce((sum, p) => sum + p.amount, 0);
+
+        await onSubmit({
+          description: description.trim(),
+          amount: totalPaid,
+          currency,
+          paidBy: payers,
+          splitType,
+          splitAmounts,
+          isMultiplePayers: true,
+          date: new Date().toISOString(),
+        });
+      } else {
+        if (!description.trim()) {
+          Alert.alert('Missing Information', 'Please enter a description for this expense');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!amount || parseFloat(amount) <= 0) {
+          Alert.alert('Invalid Amount', 'Please enter a valid amount greater than 0');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!paidBy) {
+          Alert.alert('Missing Information', 'Please select who paid for this expense');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (Object.keys(splitAmounts).length === 0) {
+          Alert.alert('Missing Information', 'Please select at least one person to split the expense');
+          setIsSubmitting(false);
+          return;
+        }
+
+        await onSubmit({
+          description: description.trim(),
+          amount: parseFloat(amount),
+          currency,
+          paidBy,
+          splitType,
+          splitAmounts,
+          isMultiplePayers: false,
+          date: new Date().toISOString(),
+        });
       }
-
-      const totalPaid = payers.reduce((sum, p) => sum + p.amount, 0);
-
-      onSubmit({
-        description,
-        amount: totalPaid,
-        currency,
-        paidBy: payers,
-        splitType,
-        splitAmounts,
-        isMultiplePayers: true,
-        date: new Date().toISOString(),
-      });
-    } else {
-      if (!description || !amount || !paidBy || Object.keys(splitAmounts).length === 0) {
-        Alert.alert('Error', 'Please fill in all required fields');
-        return;
-      }
-
-      onSubmit({
-        description,
-        amount: parseFloat(amount),
-        currency,
-        paidBy,
-        splitType,
-        splitAmounts,
-        isMultiplePayers: false,
-        date: new Date().toISOString(),
-      });
+      setIsSubmitting(false);
+    } catch (error) {
+      setIsSubmitting(false);
+      Alert.alert('Error', 'Failed to save expense. Please try again.');
     }
   };
 
@@ -245,9 +292,10 @@ function ExpenseForm({ members, currentUser, onSubmit, onCancel, initialExpense 
   };
 
   return (
-    <ScrollView style={styles.container} nestedScrollEnabled={true}>
-      <Text style={styles.label}>Description</Text>
-      <TextInput
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <ScrollView style={styles.container} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
+        <Text style={styles.label}>Description</Text>
+        <TextInput
         style={styles.input}
         placeholder="What was the expense for?"
         value={description}
@@ -476,13 +524,25 @@ function ExpenseForm({ members, currentUser, onSubmit, onCancel, initialExpense 
       )}
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+        <TouchableOpacity 
+          style={styles.cancelButton} 
+          onPress={onCancel}
+          disabled={isSubmitting}
+        >
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>
-            {initialExpense ? 'Update Expense' : 'Add Expense'}
-          </Text>
+        <TouchableOpacity 
+          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]} 
+          onPress={handleSubmit}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.submitButtonText}>
+              {initialExpense ? 'Update Expense' : 'Add Expense'}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -528,6 +588,7 @@ function ExpenseForm({ members, currentUser, onSubmit, onCancel, initialExpense 
         </View>
       </Modal>
     </ScrollView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -770,6 +831,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#9ca3af',
+    opacity: 0.7,
   },
   submitButtonText: {
     color: '#fff',

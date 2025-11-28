@@ -9,6 +9,8 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { authAPI } from '../api/index.js';
@@ -25,6 +27,7 @@ function Auth({ onLogin }) {
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
+    Keyboard.dismiss();
     setError('');
     setLoading(true);
 
@@ -90,12 +93,13 @@ function Auth({ onLogin }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.authCard}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+          <View style={styles.authCard}>
           <Text style={styles.title}>💰 Travelog</Text>
           <Text style={styles.subtitle}>Track and split shared expenses with ease</Text>
 
@@ -185,6 +189,7 @@ function Auth({ onLogin }) {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }
 
