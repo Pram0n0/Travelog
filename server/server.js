@@ -8,7 +8,7 @@ import MongoStore from 'connect-mongo'
 import cors from 'cors'
 import passportConfig from './config/passport.js'
 import authRoutes from './routes/auth.js'
-import groupRoutes from './routes/groups.js'
+import groupRoutes from './routes/index.js'
 
 const app = express()
 const PORT = process.env.PORT || 5000
