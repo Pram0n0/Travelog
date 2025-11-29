@@ -249,39 +249,39 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
       return { 'USD': { totalSpend: 0, memberShares: {} } }
     }
     
-    group.expenses.forEach(expense => {
-      const currency = expense.currency || 'USD'
-      if (!totalsPerCurrency[currency]) {
-        totalsPerCurrency[currency] = {
-          totalSpend: 0,
-          memberShares: {}
+    group.expenses
+      .filter(expense => !expense.isSettlement && expense.type !== 'settlement')
+      .forEach(expense => {
+        const currency = expense.currency || 'USD'
+        if (!totalsPerCurrency[currency]) {
+          totalsPerCurrency[currency] = {
+            totalSpend: 0,
+            memberShares: {}
+          }
+          if (Array.isArray(group.members)) {
+            group.members.forEach(member => {
+              totalsPerCurrency[currency].memberShares[member] = 0
+            })
+          }
         }
-        if (Array.isArray(group.members)) {
-          group.members.forEach(member => {
-            totalsPerCurrency[currency].memberShares[member] = 0
+        totalsPerCurrency[currency].totalSpend += expense.amount
+        if (expense.splitAmounts) {
+          Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
+            if (!totalsPerCurrency[currency].memberShares[member]) {
+              totalsPerCurrency[currency].memberShares[member] = 0
+            }
+            totalsPerCurrency[currency].memberShares[member] += amount
+          })
+        } else if (expense.splitBetween) {
+          const sharePerPerson = expense.amount / expense.splitBetween.length
+          expense.splitBetween.forEach(member => {
+            if (!totalsPerCurrency[currency].memberShares[member]) {
+              totalsPerCurrency[currency].memberShares[member] = 0
+            }
+            totalsPerCurrency[currency].memberShares[member] += sharePerPerson
           })
         }
-      }
-      
-      totalsPerCurrency[currency].totalSpend += expense.amount
-      
-      if (expense.splitAmounts) {
-        Object.entries(expense.splitAmounts).forEach(([member, amount]) => {
-          if (!totalsPerCurrency[currency].memberShares[member]) {
-            totalsPerCurrency[currency].memberShares[member] = 0
-          }
-          totalsPerCurrency[currency].memberShares[member] += amount
-        })
-      } else if (expense.splitBetween) {
-        const sharePerPerson = expense.amount / expense.splitBetween.length
-        expense.splitBetween.forEach(member => {
-          if (!totalsPerCurrency[currency].memberShares[member]) {
-            totalsPerCurrency[currency].memberShares[member] = 0
-          }
-          totalsPerCurrency[currency].memberShares[member] += sharePerPerson
-        })
-      }
-    })
+      })
 
     return totalsPerCurrency
   }, [group.expenses, group.members])

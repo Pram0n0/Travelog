@@ -588,6 +588,56 @@
   transition: all 0.15s;
 }
 
+@media (max-width: 600px) {
+  .expense-item {
+    padding: 0.75rem;
+  }
+  .expense-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .expense-description {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+  }
+  .expense-amount {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+  }
+  .expense-details {
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+    word-break: break-word;
+  }
+  .expense-involvement {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+  .expense-actions {
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+  }
+  .expense-summary {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+  .expense-date {
+    min-width: 48px;
+    font-size: 0.85rem;
+    padding: 0.25rem;
+  }
+  .expanded-section {
+    padding: 0.5rem;
+  }
+  .detail-list {
+    gap: 0.25rem;
+  }
+}
+}
+
 .expense-item.expanded {
   border-color: var(--text-primary);
 }
