@@ -6,6 +6,7 @@ import { groupsAPI } from '../api'
 
 function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup, onGroupUpdate }) {
   const [showForm, setShowForm] = useState(false)
+  const [error, setError] = useState('')
   const [expandedExpense, setExpandedExpense] = useState(null)
   const [editingExpense, setEditingExpense] = useState(null)
   const [showTotals, setShowTotals] = useState(false)
@@ -160,7 +161,7 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
         })
       } catch (error) {
         console.error('Error bundling expenses:', error)
-        alert('Failed to bundle expenses. Please try again.')
+        setError(error.message || 'Failed to bundle expenses. Please try again.')
         // If bundling fails, just add the new expense normally
         await onAddExpense(newExpenseData)
       }
@@ -202,7 +203,7 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
       }
     } catch (error) {
       console.error('Error processing payment:', error)
-      alert(`Failed to ${action} payment. Please try again.`)
+      setError(error.message || `Failed to ${action} payment. Please try again.`)
     } finally {
       setIsProcessingPayment(false)
     }
@@ -332,7 +333,7 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
       
       // If all expenses are already in target currency, no need to convert
       if (currencies.length === 1 && currencies[0] === targetCurrency) {
-        alert('All expenses are already in ' + targetCurrency)
+        setError('All expenses are already in ' + targetCurrency)
         setShowConvertDialog(false)
         setIsConverting(false)
         return
@@ -343,6 +344,7 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
       const data = await response.json()
       
       if (!data.rates) {
+        setError('Failed to fetch exchange rates')
         throw new Error('Failed to fetch exchange rates')
       }
 
@@ -389,10 +391,10 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
       await Promise.all(conversionPromises)
       
       setShowConvertDialog(false)
-      alert(`Successfully converted all expenses to ${targetCurrency}`)
+      setError(`Successfully converted all expenses to ${targetCurrency}`)
     } catch (error) {
       console.error('Conversion error:', error)
-      alert('Failed to convert currencies. Please try again.')
+      setError(error.message || 'Failed to convert currencies. Please try again.')
     } finally {
       setIsConverting(false)
     }
@@ -402,6 +404,12 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
 
   return (
     <div className="expense-tracker">
+      {error && (
+        <div className="error-alert" style={{background:'#ffe5e5',color:'#b00020',padding:'1em',marginBottom:'1em',borderRadius:'6px'}}>
+          <strong>Error:</strong> {error}
+          <button style={{float:'right',background:'none',border:'none',color:'#b00020',fontWeight:'bold',cursor:'pointer'}} onClick={()=>setError('')}>✕</button>
+        </div>
+      )}
       <div className="back-button-row">
         <button className="secondary" onClick={onBack}>← Back to Groups</button>
         <div className="right-buttons">
