@@ -7,6 +7,7 @@ import { groupsAPI } from '../api'
 function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpense, onEditExpense, onLeaveGroup, onGroupUpdate }) {
   const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [expandedExpense, setExpandedExpense] = useState(null)
   const [editingExpense, setEditingExpense] = useState(null)
   const [showTotals, setShowTotals] = useState(false)
@@ -391,7 +392,8 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
       await Promise.all(conversionPromises)
       
       setShowConvertDialog(false)
-      setError(`Successfully converted all expenses to ${targetCurrency}`)
+      setSuccess(`Successfully converted all expenses to ${targetCurrency}`)
+      setError('')
     } catch (error) {
       console.error('Conversion error:', error)
       setError(error.message || 'Failed to convert currencies. Please try again.')
@@ -404,6 +406,12 @@ function ExpenseTracker({ group, currentUser, onBack, onAddExpense, onDeleteExpe
 
   return (
     <div className="expense-tracker">
+      {success && (
+        <div className="success-alert" style={{background:'#e5ffe5',color:'#008000',padding:'1em',marginBottom:'1em',borderRadius:'6px'}}>
+          <strong>Success:</strong> {success}
+          <button style={{float:'right',background:'none',border:'none',color:'#008000',fontWeight:'bold',cursor:'pointer'}} onClick={()=>setSuccess('')}>✕</button>
+        </div>
+      )}
       {error && (
         <div className="error-alert" style={{background:'#ffe5e5',color:'#b00020',padding:'1em',marginBottom:'1em',borderRadius:'6px'}}>
           <strong>Error:</strong> {error}

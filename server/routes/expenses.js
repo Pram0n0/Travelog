@@ -71,12 +71,12 @@ router.put('/:groupId/expenses/:expenseId', isAuthenticated, async (req, res) =>
       return res.status(404).json({ error: 'Expense not found' })
     }
 
-    // Only creator can edit
-    if (group.expenses[expenseIndex].createdBy !== username) {
-      return res.status(403).json({ error: 'Only the creator can edit this expense' })
+    // Allow any member to edit for currency conversion only
+    const updatedExpenseData = req.body;
+    const isCurrencyConversion = updatedExpenseData.currency && updatedExpenseData.currency !== group.expenses[expenseIndex].currency;
+    if (group.expenses[expenseIndex].createdBy !== username && !isCurrencyConversion) {
+      return res.status(403).json({ error: 'Only the creator can edit this expense' });
     }
-
-    const updatedExpenseData = req.body
     const updatedExpense = {
       ...group.expenses[expenseIndex],
       ...updatedExpenseData,

@@ -32,6 +32,7 @@ app.use(express.urlencoded({ extended: true }))
 app.set('trust proxy', 1)
 
 // CORS Configuration
+console.log('CORS origin:', process.env.CLIENT_URL || 'http://localhost:5173');
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true,
@@ -56,6 +57,11 @@ app.use(session({
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
   }
 }))
+console.log('Session cookie config:', {
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  clientUrl: process.env.CLIENT_URL
+});
 
 // Passport Middleware
 app.use(passportConfig.initialize())

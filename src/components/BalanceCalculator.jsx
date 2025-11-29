@@ -82,21 +82,21 @@ function BalanceCalculator({
   // === Event Handlers ===
   
   const handlePayClick = (member, amount, currency) => {
-    setPaymentData({ to: member, amount, currency })
-    setShowPaymentModal(true)
+    console.log('Pay button clicked:', { member, amount, currency });
+    setPaymentData({ to: member, amount, currency });
+    setShowPaymentModal(true);
   }
 
   const handlePaymentConfirm = async (amount) => {
-    if (!paymentData || !onPaymentAction) return
-    
+    console.log('Payment modal confirmed:', { paymentData, amount });
+    if (!paymentData || !onPaymentAction) return;
     await onPaymentAction('create', {
       to: paymentData.to,
       amount,
       currency: paymentData.currency
-    })
-    
-    setShowPaymentModal(false)
-    setPaymentData(null)
+    });
+    setShowPaymentModal(false);
+    setPaymentData(null);
   }
 
   const handlePaymentResponse = async (paymentId, action) => {
@@ -164,14 +164,18 @@ function BalanceCalculator({
     if (totalCount === 0) return null
 
     return (
-      <div className="payment-reminder-banner">
+      <div className="payment-reminder-banner modern-banner">
         <span className="banner-icon">🔔</span>
-        <div>
-          <strong>Payment Notifications</strong>
-          <div>
-            {totalPendingPayments > 0 && `${totalPendingPayments} pending payment${totalPendingPayments > 1 ? 's' : ''} to review`}
-            {totalPendingPayments > 0 && totalPaymentRequests > 0 && ' • '}
-            {totalPaymentRequests > 0 && `${totalPaymentRequests} payment request${totalPaymentRequests > 1 ? 's' : ''}`}
+        <div className="banner-content">
+          <strong className="banner-title">Payment Notifications</strong>
+          <div className="banner-details">
+            {totalPendingPayments > 0 && (
+              <span className="pending-highlight">{totalPendingPayments} pending payment{totalPendingPayments > 1 ? 's' : ''} to review</span>
+            )}
+            {totalPendingPayments > 0 && totalPaymentRequests > 0 && <span className="dot-separator">•</span>}
+            {totalPaymentRequests > 0 && (
+              <span className="request-highlight">{totalPaymentRequests} payment request{totalPaymentRequests > 1 ? 's' : ''}</span>
+            )}
           </div>
         </div>
       </div>
@@ -182,23 +186,26 @@ function BalanceCalculator({
     if (requestsForMe.length === 0) return null
 
     return (
-      <div className="payment-requests-section">
-        <h4>🔔 Payment Requests</h4>
+      <div className="payment-requests-section modern-section">
+        <h4 className="section-title">🔔 Payment Requests</h4>
         {requestsForMe.map((request) => (
-          <div key={request.id} className="payment-request-item">
-            <div>
-              <strong>{request.from}</strong> is requesting payment
-              <div className="request-amount">{formatCurrency(request.amount, request.currency)}</div>
+          <div key={request.id} className="payment-request-item modern-item">
+            <div className="request-header">
+              <div className="avatar-circle">{request.from[0].toUpperCase()}</div>
+              <div className="request-info">
+                <span className="request-from"><strong>{request.from}</strong> is requesting payment</span>
+                <span className="request-amount modern-amount">{formatCurrency(request.amount, request.currency)}</span>
+              </div>
             </div>
-            <div className="request-actions">
+            <div className="request-actions modern-actions">
               <button 
-                className="btn-pay"
+                className="btn-pay modern-btn-pay"
                 onClick={() => handlePayClick(request.from, request.amount, request.currency)}
               >
                 💰 Pay Now
               </button>
               <button 
-                className="btn-reject-payment"
+                className="btn-reject-payment modern-btn-reject"
                 onClick={() => handleDismissRequest(request.id)}
               >
                 ✕ Dismiss
@@ -216,23 +223,26 @@ function BalanceCalculator({
     if (paymentsToConfirm.length === 0) return null
 
     return (
-      <div className="pending-payments-section">
-        <h4>⏳ Pending Payments (Awaiting Your Confirmation)</h4>
+      <div className="pending-payments-section modern-section">
+        <h4 className="section-title">⏳ Pending Payments (Awaiting Your Confirmation)</h4>
         {paymentsToConfirm.map((payment) => (
-          <div key={payment.id} className="pending-payment-item">
-            <div>
-              <strong>{payment.from}</strong> has sent you{' '}
-              <strong>{formatCurrency(payment.amount, payment.currency)}</strong>
+          <div key={payment.id} className="pending-payment-item modern-item">
+            <div className="pending-header">
+              <div className="avatar-circle">{payment.from[0].toUpperCase()}</div>
+              <div className="pending-info">
+                <span className="pending-from"><strong>{payment.from}</strong> has sent you</span>
+                <span className="pending-amount modern-amount">{formatCurrency(payment.amount, payment.currency)}</span>
+              </div>
             </div>
-            <div className="payment-actions">
+            <div className="payment-actions modern-actions">
               <button 
-                className="btn-confirm-payment"
+                className="btn-confirm-payment modern-btn-confirm"
                 onClick={() => handlePaymentResponse(payment.id, 'confirm')}
               >
                 ✓ Confirm
               </button>
               <button 
-                className="btn-reject-payment"
+                className="btn-reject-payment modern-btn-reject"
                 onClick={() => handlePaymentResponse(payment.id, 'reject')}
               >
                 ✗ Reject
@@ -547,12 +557,15 @@ function BalanceCalculator({
 
       {showPaymentModal && (
         <PaymentModal
-          paymentData={paymentData}
-          onConfirm={handlePaymentConfirm}
-          onCancel={() => {
-            setShowPaymentModal(false)
-            setPaymentData(null)
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setPaymentData(null);
           }}
+          onConfirm={handlePaymentConfirm}
+          maxAmount={paymentData?.amount || 0}
+          currency={paymentData?.currency || 'USD'}
+          recipientName={paymentData?.to || ''}
         />
       )}
     </div>
